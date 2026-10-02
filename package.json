@@ -1,0 +1,30 @@
+{
+  "name": "pharma-monitor",
+  "version": "1.0.0",
+  "description": "Sistema de monitoreo ambiental para fabricación farmacéutica - Siegfried",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:init": "node src/db/init.js",
+    "db:seed": "node src/db/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "date-fns": "^3.6.0",
+    "date-fns-tz": "^2.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.10.1",
+    "pdfkit": "^0.15.0",
+    "pg": "^8.12.0",
+    "socket.io": "^4.7.5"
+  }
+}
