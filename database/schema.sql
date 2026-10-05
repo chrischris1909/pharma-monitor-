@@ -265,34 +265,27 @@ ORDER BY
 
 -- Áreas de laboratorio Siegfried
 INSERT INTO areas_laboratorio (nombre, sensor_id, descripcion, tipo_area, imagen_url) VALUES
-('Mezcla Líquidos', 'ARD-MEZCLA-LÍQUIDOS-01', 'Área de preparación y mezcla de soluciones acuosas y jarabes', 'liquidos', '/images/areas/mezcla-liquidos.jpg'),
-('Mezcla Sólidos', 'ARD-MEZCLA-SÓLIDOS-01', 'Área de granulación, secado y mezcla de polvos y tabletas', 'solidos', '/images/areas/mezcla-solidos.jpg'),
-('Estériles', 'ARD-ESTÉRILES-01', 'Área de fabricación aséptica y llenado estéril', 'esteriles', '/images/areas/esteriles.jpg'),
-('Semisólidos', 'ARD-SEMISÓLIDOS-01', 'Área de cremas, ungüentos y geles', 'semisolidos', '/images/areas/semisolidos.jpg'),
-('Control Calidad', 'ARD-CONTROL-CALIDAD-01', 'Laboratorio de control de calidad fisicoquímico y microbiológico', 'control_calidad', '/images/areas/control-calidad.jpg'),
-('Almacén Materias Primas', 'ARD-ALMACÉN-MP-01', 'Almacén de materias primas y excipientes', 'almacen', '/images/areas/almacen-mp.jpg'),
-('Almacén Producto Terminado', 'ARD-ALMACÉN-PT-01', 'Almacén de producto terminado a temperatura controlada', 'almacen', '/images/areas/almacen-pt.jpg')
+('Mezcla Líquidos', 'ARD-MEZCLA-LIQUIDOS-01', 'Área de preparación y mezcla de soluciones acuosas y jarabes', 'liquidos', '/images/areas/mezcla-liquidos.jpg'),
+('Mezcla Sólidos', 'ARD-MEZCLA-SOLIDOS-01', 'Área de granulación, secado y mezcla de polvos y tabletas', 'solidos', '/images/areas/mezcla-solidos.jpg'),
+('Pesada', 'ARD-PESADA-01', 'Área de pesaje y dispensación de materias primas', 'solidos', '/images/areas/pesada.jpg'),
+('Control Calidad', 'ARD-CONTROL-CALIDAD-01', 'Laboratorio de control de calidad fisicoquímico y microbiológico', 'control_calidad', '/images/areas/control-calidad.jpg')
 ON CONFLICT (nombre) DO NOTHING;
 
 -- Parámetros de seguridad por área (rangos típicos farmacéuticos)
 INSERT INTO parametros_seguridad (area_id, temp_min, temp_max, humedad_min, humedad_max, presion_min, presion_max, temp_critica_min, temp_critica_max, humedad_critica_min, humedad_critica_max, presion_critica_min, presion_critica_max)
 SELECT id,
     CASE nombre
-        WHEN 'Mezcla Líquidos' THEN 18 WHEN 'Mezcla Sólidos' THEN 20 WHEN 'Estériles' THEN 18
-        WHEN 'Semisólidos' THEN 19 WHEN 'Control Calidad' THEN 20 WHEN 'Almacén Materias Primas' THEN 15
-        WHEN 'Almacén Producto Terminado' THEN 15 ELSE 18 END,
+        WHEN 'Mezcla Líquidos' THEN 18 WHEN 'Mezcla Sólidos' THEN 20 WHEN 'Pesada' THEN 18
+        WHEN 'Control Calidad' THEN 20 ELSE 18 END,
     CASE nombre
-        WHEN 'Mezcla Líquidos' THEN 25 WHEN 'Mezcla Sólidos' THEN 28 WHEN 'Estériles' THEN 22
-        WHEN 'Semisólidos' THEN 26 WHEN 'Control Calidad' THEN 25 WHEN 'Almacén Materias Primas' THEN 25
-        WHEN 'Almacén Producto Terminado' THEN 25 ELSE 32 END,
+        WHEN 'Mezcla Líquidos' THEN 25 WHEN 'Mezcla Sólidos' THEN 28 WHEN 'Pesada' THEN 24
+        WHEN 'Control Calidad' THEN 25 ELSE 32 END,
     CASE nombre
-        WHEN 'Mezcla Líquidos' THEN 30 WHEN 'Mezcla Sólidos' THEN 35 WHEN 'Estériles' THEN 20
-        WHEN 'Semisólidos' THEN 40 WHEN 'Control Calidad' THEN 30 WHEN 'Almacén Materias Primas' THEN 40
-        WHEN 'Almacén Producto Terminado' THEN 45 ELSE 65 END,
+        WHEN 'Mezcla Líquidos' THEN 30 WHEN 'Mezcla Sólidos' THEN 35 WHEN 'Pesada' THEN 30
+        WHEN 'Control Calidad' THEN 30 ELSE 30 END,
     CASE nombre
-        WHEN 'Mezcla Líquidos' THEN 55 WHEN 'Mezcla Sólidos' THEN 60 WHEN 'Estériles' THEN 45
-        WHEN 'Semisólidos' THEN 60 WHEN 'Control Calidad' THEN 60 WHEN 'Almacén Materias Primas' THEN 60
-        WHEN 'Almacén Producto Terminado' THEN 60 ELSE 65 END,
+        WHEN 'Mezcla Líquidos' THEN 55 WHEN 'Mezcla Sólidos' THEN 60 WHEN 'Pesada' THEN 50
+        WHEN 'Control Calidad' THEN 60 ELSE 65 END,
     10, 15,
     16, 27,  -- criticas temp
     25, 70,  -- criticas humedad

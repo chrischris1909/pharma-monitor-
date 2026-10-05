@@ -93,7 +93,7 @@ export default function AreaDetail() {
         ].map(p => (
           <div className="card" key={p.key}>
             <div className="mut">{p.label} · rango {p.range[0]}–{p.range[1]} {p.unit}</div>
-            <div className="big">{s[p.key]?.toFixed(1)} {p.unit}</div>
+            <div className="big">{s[p.key] != null ? Number(s[p.key]).toFixed(1) : '--'} {p.unit}</div>
             <svg className="ch" viewBox="0 0 300 110" role="img" aria-label={p.label}>
               <polyline fill="none" stroke={p.color} strokeWidth="2"
                 points={(s.historial?.[p.key] || [s[p.key]]).map((v, i) => `${8 + i * (284 / Math.max(1, (s.historial?.[p.key]?.length || 1) - 1))},${102 - (v - Math.min(...(s.historial?.[p.key] || [s[p.key]]))) / (Math.max(...(s.historial?.[p.key] || [s[p.key]])) - Math.min(...(s.historial?.[p.key] || [s[p.key]])) || 1) * 94}`).join(' ')}

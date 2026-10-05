@@ -101,9 +101,9 @@ export default function Areas() {
               </div>
               <p className="mut" style={{ margin: '6px 0 10px' }}>{a.descripcion || 'Sin descripción.'}</p>
               <div style={{ display: 'flex', gap: '16px', fontWeight: 700, fontSize: '14px' }}>
-                <span>{s.temperatura?.toFixed(1)} °C</span>
-                <span>{s.humedad?.toFixed(0)} %</span>
-                <span>{s.presion?.toFixed(1)} Pa</span>
+                <span>{s.temperatura != null ? Number(s.temperatura).toFixed(1) : '--'} °C</span>
+                <span>{s.humedad != null ? Number(s.humedad).toFixed(0) : '--'} %</span>
+                <span>{s.presion != null ? Number(s.presion).toFixed(1) : '--'} Pa</span>
               </div>
               <div className="mut" style={{ marginTop: '6px' }}>Rango: {a.temp_min}–{a.temp_max} °C · ≤{a.humedad_max} % · {a.presion_min}–{a.presion_max} Pa</div>
               <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>

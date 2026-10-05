@@ -44,9 +44,9 @@ router.post('/lectura', async (req, res) => {
       if (nameResult.rows.length > 0) {
         areaId = nameResult.rows[0].id;
       } else {
-        // Fallback 2: Buscar área que tenga este sensor_id en lecturas recientes
+        // Fallback 2: Buscar área que tenga este sensor_id en lecturas recientes (Corregido sin DISTINCT problemático)
         const recentResult = await query(
-          `SELECT DISTINCT area_id FROM lecturas_sensores WHERE sensor_id = $1 ORDER BY fecha_hora DESC LIMIT 1`,
+          `SELECT area_id FROM lecturas_sensores WHERE sensor_id = $1 ORDER BY fecha_hora DESC LIMIT 1`,
           [sensor_id]
         );
         if (recentResult.rows.length > 0) areaId = recentResult.rows[0].area_id;
@@ -163,7 +163,6 @@ router.get('/lecturas/stats', authMiddleware, [...validateDateRange, handleValid
     if (fecha_desde) { where += ` AND fecha_hora >= $${paramIdx++}`; params.push(fecha_desde); }
     if (fecha_hasta) { where += ` AND fecha_hora <= $${paramIdx++}`; params.push(fecha_hasta); }
 
-    // Time bucket para TimescaleDB o date_trunc para PostgreSQL normal
     const bucket = intervalo === 'minute' ? '1 minute' : intervalo === 'hour' ? '1 hour' : '1 day';
 
     const result = await query(`
@@ -187,7 +186,6 @@ router.get('/lecturas/stats', authMiddleware, [...validateDateRange, handleValid
 
     res.json({ stats: result.rows });
   } catch (error) {
-    // Fallback sin time_bucket
     try {
       const result = await query(`
         SELECT
@@ -244,7 +242,6 @@ router.get('/lecturas/export', authMiddleware, [...validateDateRange, handleVali
       LIMIT 50000
     `, params);
 
-    // Generar CSV
     const headers = ['Fecha/Hora', 'Área', 'Sensor ID', 'Temperatura (°C)', 'Humedad (%)', 'Presión (Pa)', 'Batería (%)', 'Señal (%)'];
     const rows = result.rows.map(r => [
       r.fecha_hora,
@@ -261,7 +258,7 @@ router.get('/lecturas/export', authMiddleware, [...validateDateRange, handleVali
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="lecturas_${new Date().toISOString().split('T')[0]}.csv"`);
-    res.send('\uFEFF' + csv); // BOM para Excel
+    res.send('\uFEFF' + csv);
   } catch (error) {
     res.status(500).json({ error: 'Error exportando datos' });
   }

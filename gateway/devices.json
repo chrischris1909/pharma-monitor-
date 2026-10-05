@@ -1,7 +1,7 @@
 [
   {
     "name": "PLC Mezcla Líquidos",
-    "sensorId": "ARD-MEZCLA-LÍQUIDOS-01",
+    "sensorId": "ARD-MEZCLA-LIQUIDOS-01",
     "host": "localhost",
     "port": 5020,
     "unitId": 1,
@@ -11,9 +11,29 @@
   },
   {
     "name": "PLC Mezcla Sólidos",
-    "sensorId": "ARD-MEZCLA-SÓLIDOS-01",
+    "sensorId": "ARD-MEZCLA-SOLIDOS-01",
     "host": "localhost",
     "port": 5021,
+    "unitId": 1,
+    "scale": 10,
+    "registers": { "start": 0, "count": 4 },
+    "map": { "temperatura": 0, "humedad": 1, "presion": 2 }
+  },
+  {
+    "name": "PLC Pesada",
+    "sensorId": "ARD-PESADA-01",
+    "host": "localhost",
+    "port": 5022,
+    "unitId": 1,
+    "scale": 10,
+    "registers": { "start": 0, "count": 4 },
+    "map": { "temperatura": 0, "humedad": 1, "presion": 2 }
+  },
+  {
+    "name": "PLC Control Calidad",
+    "sensorId": "ARD-CONTROL-CALIDAD-01",
+    "host": "localhost",
+    "port": 5023,
     "unitId": 1,
     "scale": 10,
     "registers": { "start": 0, "count": 4 },

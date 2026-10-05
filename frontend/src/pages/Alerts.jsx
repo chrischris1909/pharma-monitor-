@@ -41,8 +41,10 @@ export default function Alerts() {
 
   const loadEmail = async () => {
     try {
-      const res = await api.get('/alertas/email')
-      setEmailTo(res.data.email || '')
+      const res = await api.get('/alertas/configuracion_sistema')
+      const configArray = Array.isArray(res.data) ? res.data : []
+      const emailConfig = configArray.find(c => c.clave === 'alert_email')
+      setEmailTo(emailConfig ? emailConfig.valor : '')
     } catch (err) {
       console.warn("No se pudo obtener la configuración de email previa:", err)
     }
@@ -80,7 +82,7 @@ export default function Alerts() {
 
     setSavingEmail(true)
     try {
-      await api.post('/alertas/email', { email: emailTo.trim() })
+      await api.post('/alertas/configuracion_sistema', { valor: emailTo.trim() })
       toast.success('Destinatario guardado correctamente')
     } catch (err) {
       console.error("Error definitivo al guardar email:", err)

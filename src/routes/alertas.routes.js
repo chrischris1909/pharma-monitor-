@@ -156,10 +156,9 @@ router.post('/:id/reenviar-email', authMiddleware, requireSupervisor, validateId
     const alerta = alertaResult.rows[0];
     const { sendAlertEmail } = await import('../utils/email.js');
 
-    // Buscar destinatario configurado
     let destinatarios = process.env.ALERT_EMAILS?.split(',').map(e => e.trim()).filter(Boolean) || [];
     try {
-      const configRes = await query("SELECT valor FROM configuracion WHERE clave = 'email_notificaciones'");
+      const configRes = await query("SELECT valor FROM configuracion_sistema WHERE clave = 'alert_email'");
       if (configRes.rows.length > 0 && configRes.rows[0].valor) {
         destinatarios = [configRes.rows[0].valor];
       }
