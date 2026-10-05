@@ -4,7 +4,7 @@ import Login from './Login';
 import { AuthContext } from '../context/AuthContext';
 
 // Mock del AuthContext
-const mockLogin = vi.fn();
+const mockLogin = jest.fn();
 const mockContext = {
   login: mockLogin,
   user: null,
@@ -21,7 +21,7 @@ const renderWithContext = (ui) => {
 
 describe('Login Component', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
   it('renderiza correctamente el formulario de login', () => {
