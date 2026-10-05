@@ -41,13 +41,8 @@ export default function Alerts() {
 
   const loadEmail = async () => {
     try {
-      const res = await api.get('/configuracion_sistema')
-      if (Array.isArray(res.data)) {
-        const cfg = Object.fromEntries(res.data.map(r => [r.clave || r.key, r.valor || r.value]))
-        setEmailTo(cfg.alert_email || cfg.email || '')
-      } else if (res.data && typeof res.data === 'object') {
-        setEmailTo(res.data.alert_email || res.data.email || '')
-      }
+      const res = await api.get('/alertas/email')
+      setEmailTo(res.data.email || '')
     } catch (err) {
       console.warn("No se pudo obtener la configuración de email previa:", err)
     }
@@ -70,7 +65,8 @@ export default function Alerts() {
       toast.success('Correo reenviado')
     } catch (err) {
       console.error("Error al reenviar correo:", err)
-      toast.error('Error reenviando correo')
+      const msg = err.response?.data?.error || 'Error reenviando correo'
+      toast.error(msg)
     }
   }
 
@@ -84,25 +80,12 @@ export default function Alerts() {
 
     setSavingEmail(true)
     try {
-      // Intento principal enviando clave/valor a la API
-      await api.post('/configuracion_sistema', { 
-        clave: 'alert_email', 
-        valor: emailTo.trim(), 
-        descripcion: 'Destinatario de alertas críticas' 
-      })
+      await api.post('/alertas/email', { email: emailTo.trim() })
       toast.success('Destinatario guardado correctamente')
     } catch (err) {
-      console.error("Error en POST /configuracion_sistema, intentando alternativa:", err)
-      
-      // Fallback en caso de que la API espere PUT o un formato directo
-      try {
-        await api.put('/configuracion_sistema', { alert_email: emailTo.trim() })
-        toast.success('Destinatario guardado correctamente')
-      } catch (fallbackErr) {
-        console.error("Error definitivo al guardar email:", fallbackErr)
-        const msg = fallbackErr.response?.data?.message || fallbackErr.response?.data?.error || 'Error guardando email'
-        toast.error(msg)
-      }
+      console.error("Error definitivo al guardar email:", err)
+      const msg = err.response?.data?.message || err.response?.data?.error || 'Error guardando email'
+      toast.error(msg)
     } finally {
       setSavingEmail(false)
     }

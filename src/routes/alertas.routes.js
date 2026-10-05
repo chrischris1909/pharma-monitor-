@@ -156,6 +156,21 @@ router.post('/:id/reenviar-email', authMiddleware, requireSupervisor, validateId
     const alerta = alertaResult.rows[0];
     const { sendAlertEmail } = await import('../utils/email.js');
 
+    // Buscar destinatario configurado
+    let destinatarios = process.env.ALERT_EMAILS?.split(',').map(e => e.trim()).filter(Boolean) || [];
+    try {
+      const configRes = await query("SELECT valor FROM configuracion WHERE clave = 'email_notificaciones'");
+      if (configRes.rows.length > 0 && configRes.rows[0].valor) {
+        destinatarios = [configRes.rows[0].valor];
+      }
+    } catch (e) {
+      console.warn("No se pudo cargar configuracion de DB", e.message);
+    }
+
+    if (destinatarios.length === 0) {
+      destinatarios = [process.env.EMAIL_USER];
+    }
+
     const emailResult = await sendAlertEmail({
       areaNombre: alerta.area_nombre,
       tipoAlerta: alerta.tipo_alerta,
@@ -165,7 +180,7 @@ router.post('/:id/reenviar-email', authMiddleware, requireSupervisor, validateId
       valorMin: alerta.valor_esperado_min,
       valorMax: alerta.valor_esperado_max,
       fecha: alerta.created_at,
-      destinatarios: process.env.ALERT_EMAILS?.split(',').map(e => e.trim()).filter(Boolean) || [],
+      destinatarios,
     });
 
     if (emailResult.success) {
@@ -176,6 +191,7 @@ router.post('/:id/reenviar-email', authMiddleware, requireSupervisor, validateId
 
     res.json({ success: emailResult.success, messageId: emailResult.messageId, error: emailResult.error });
   } catch (error) {
+    console.error("Error reenviando email:", error);
     res.status(500).json({ error: 'Error reenviando email' });
   }
 });

@@ -104,7 +104,7 @@ async function checkThresholds(io) {
   }
 }
 
-function evaluateArea(area) {
+export function evaluateArea(area) {
   const alertas = [];
   const now = new Date();
 

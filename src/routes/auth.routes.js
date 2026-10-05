@@ -16,17 +16,18 @@ const router = express.Router();
 // POST /api/auth/login
 router.post('/login',
   [
-    body('correo').isEmail().normalizeEmail().withMessage('Correo inválido'),
+    body('correo').notEmpty().withMessage('Usuario o correo requerido'),
     body('password').notEmpty().withMessage('Contraseña requerida'),
     handleValidationErrors,
   ],
   async (req, res) => {
     try {
       const { correo, password } = req.body;
+      const correoNormalizado = correo.includes('@') ? correo : `${correo}@siegfried.com`;
 
       const result = await query(
-        'SELECT id, nombre, correo_institucional, password_hash, rol FROM usuarios WHERE correo_institucional = $1 AND activo = true',
-        [correo]
+        'SELECT id, nombre, correo_institucional, password_hash, rol FROM usuarios WHERE (correo_institucional = $1 OR correo_institucional = $2) AND activo = true',
+        [correo, correoNormalizado]
       );
 
       if (result.rows.length === 0) {
