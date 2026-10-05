@@ -120,7 +120,7 @@ export default function Settings() {
               <tr><td className="mut">Versión</td><td style={{ textAlign: 'right', fontWeight: 600 }}>1.0.0</td></tr>
               <tr><td className="mut">Entorno</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{import.meta.env.MODE}</td></tr>
               <tr><td className="mut">API</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{import.meta.env.VITE_API_URL || '/api'}</td></tr>
-              <tr><td className="mut">WebSocket</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{import.meta.env.VITE_WS_URL || 'ws://localhost:3000'}</td></tr>
+              <tr><td className="mut">WebSocket</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? window.location.origin.replace(/^http/, 'ws') : 'ws://localhost:3000')}</td></tr>
             </tbody>
           </table>
         </div>
