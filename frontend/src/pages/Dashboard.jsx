@@ -65,7 +65,6 @@ export default function Dashboard() {
       setEmergency(null)
       toast.success('Simulación de emergencia terminada')
     } else {
-      // En producción: llamar a endpoint de simulación
       const firstArea = areas[0]
       if (firstArea) {
         setEmergency(firstArea.id)
@@ -74,7 +73,7 @@ export default function Dashboard() {
     }
   }
 
-  const avg = (key) => areas.reduce((s, a) => s + (a[key] || 0), 0) / (areas.length || 1)
+  const avg = (key) => areas.reduce((s, a) => s + (Number(a[key]) || 0), 0) / (areas.length || 1)
 
   if (loading) return <div className="loading-screen" style={{ padding: 40, textAlign: 'center' }}>Cargando dashboard...</div>
 
@@ -134,43 +133,20 @@ export default function Dashboard() {
       <div className="grid g4" style={{ marginBottom: '16px' }}>
         <div className="card">
           <div className="mut">Temperatura promedio</div>
-          <div className="big">{avg('temperatura').toFixed(1)} °C</div>
+          <div className="big">{(Number(avg('temperatura')) || 0).toFixed(1)} °C</div>
         </div>
         <div className="card">
           <div className="mut">Humedad promedio</div>
-          <div className="big">{avg('humedad').toFixed(0)} %</div>
+          <div className="big">{(Number(avg('humedad')) || 0).toFixed(0)} %</div>
         </div>
         <div className="card">
           <div className="mut">Presión promedio</div>
-          <div className="big">{avg('presion').toFixed(1)} Pa</div>
+          <div className="big">{(Number(avg('presion')) || 0).toFixed(1)} Pa</div>
         </div>
         <div className="card">
           <div className="mut">Alertas registradas</div>
           <div className="big">{alerts.length}</div>
         </div>
-      </div>
-
-      <div className="grid g3" style={{ marginTop: '16px', marginBottom: '16px' }}>
-        {['temperatura', 'humedad', 'presion'].map((key, i) => {
-          const labels = { temperatura: 'Temperatura (°C)', humedad: 'Humedad (%)', presion: 'Presión (Pa)' }
-          const colors = ['#7a1530', '#c8102e', '#1f9d55']
-          const series = areas.map((a, idx) => ({
-            v: a.historial?.map(h => h[key]) || [a[key]],
-            c: colors[idx % colors.length]
-          }))
-          return (
-            <div className="card" key={key}>
-              <b>{labels[key]}</b>
-              <svg className="ch" viewBox="0 0 300 120" role="img" aria-label={labels[key]}>
-                {series.map((s, si) => (
-                  <polyline key={si} fill="none" stroke={s.c} strokeWidth="2"
-                    points={s.v.map((v, i) => `${8 + i * (284 / Math.max(1, s.v.length - 1))},${112 - (v - Math.min(...s.v)) / (Math.max(...s.v) - Math.min(...s.v) || 1) * 104}`).join(' ')}
-                  />
-                ))}
-              </svg>
-            </div>
-          )
-        })}
       </div>
 
       <div className="grid g2" style={{ marginTop: '16px' }}>
@@ -196,9 +172,9 @@ export default function Dashboard() {
                   <tr key={a.id} style={{ cursor: 'pointer' }} onClick={() => window.location.href = `/areas/${a.id}`}>
                     <td><span className={`led ${a.estado === 'ok' ? '' : a.estado}`} /></td>
                     <td><b style={{ color: 'var(--wine)' }}>{a.nombre}</b></td>
-                    <td>{a.temperatura?.toFixed(1)} °C</td>
-                    <td>{a.humedad?.toFixed(0)} %</td>
-                    <td>{a.presion?.toFixed(1)} Pa</td>
+                    <td>{Number(a.temperatura || 0).toFixed(1)} °C</td>
+                    <td>{Number(a.humedad || 0).toFixed(0)} %</td>
+                    <td>{Number(a.presion || 0).toFixed(1)} Pa</td>
                     <td><span className={`pill ${a.estado === 'ok' ? '' : a.estado}`}>{lab[a.estado]}</span></td>
                   </tr>
                 ))}

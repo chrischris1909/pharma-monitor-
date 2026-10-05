@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ws } from '../services/api'
+import OfflineBanner from './OfflineBanner'
 import { LayoutDashboard, Settings, Users, AlertTriangle, Boxes, ListChecks, LogOut, ChevronLeft, ChevronRight, Factory } from 'lucide-react'
 
 const navItems = [
@@ -177,6 +178,7 @@ export default function Layout() {
         background: 'var(--bg)',
         minHeight: '100vh'
       }}>
+        <OfflineBanner />
         {alertCount > 0 && (
           <div className="status bad noprint" style={{ marginBottom: 18 }}>
             <span className="led" />

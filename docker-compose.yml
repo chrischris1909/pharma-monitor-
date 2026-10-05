@@ -1,0 +1,73 @@
+services:
+  backend:
+    build: .
+    container_name: pharma-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Origen permitido por CORS (el frontend servido por Nginx)
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+    expose:
+      - "3000"
+    networks: [pharma-net]
+
+  frontend:
+    build: ./frontend
+    container_name: pharma-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    networks: [pharma-net]
+
+  gateway:
+    build: ./gateway
+    container_name: pharma-gateway
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - plc-simulator
+    environment:
+      # URL del backend interno en Docker
+      API_URL: http://backend:3000/api/sensores/lectura
+      ARDUINO_API_KEY: ${ARDUINO_API_KEY:-arduino_secret_key}
+    networks: [pharma-net]
+
+  plc-simulator:
+    build: 
+      context: ./gateway
+      dockerfile: Dockerfile.simulator
+    container_name: pharma-plc-simulator
+    restart: unless-stopped
+    expose:
+      - "5020"
+    networks: [pharma-net]
+
+  # ---- Base de datos local de series temporales (OPCIONAL) ----
+  # Por defecto el backend usa Supabase vía DB_HOST del .env.
+  # Para usar TimescaleDB local:  docker compose --profile localdb up -d
+  # y en .env:  DB_HOST=timescaledb  DB_PORT=5432  DB_SSL=false
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: pharma-timescaledb
+    profiles: ["localdb"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-pharma_monitor}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    ports:
+      - "5432:5432"
+    networks: [pharma-net]
+
+volumes:
+  timescale-data:
+
+networks:
+  pharma-net:

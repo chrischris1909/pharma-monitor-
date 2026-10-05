@@ -1,0 +1,22 @@
+[
+  {
+    "name": "PLC Mezcla Líquidos",
+    "sensorId": "ARD-MEZCLA-LÍQUIDOS-01",
+    "host": "localhost",
+    "port": 5020,
+    "unitId": 1,
+    "scale": 10,
+    "registers": { "start": 0, "count": 4 },
+    "map": { "temperatura": 0, "humedad": 1, "presion": 2 }
+  },
+  {
+    "name": "PLC Mezcla Sólidos",
+    "sensorId": "ARD-MEZCLA-SÓLIDOS-01",
+    "host": "localhost",
+    "port": 5021,
+    "unitId": 1,
+    "scale": 10,
+    "registers": { "start": 0, "count": 4 },
+    "map": { "temperatura": 0, "humedad": 1, "presion": 2 }
+  }
+]

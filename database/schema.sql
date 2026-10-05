@@ -31,6 +31,7 @@ CREATE INDEX idx_usuarios_rol ON usuarios(rol);
 CREATE TABLE areas_laboratorio (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     nombre VARCHAR(100) NOT NULL UNIQUE,
+    sensor_id VARCHAR(100) UNIQUE, -- ID exacto del equipo Modbus/Arduino
     descripcion TEXT,
     imagen_url VARCHAR(500),
     tipo_area VARCHAR(50) CHECK (tipo_area IN ('liquidos', 'solidos', 'semisolidos', 'esteriles', 'control_calidad', 'almacen', 'otro')),
@@ -263,14 +264,14 @@ ORDER BY
 -- ============================================
 
 -- Áreas de laboratorio Siegfried
-INSERT INTO areas_laboratorio (nombre, descripcion, tipo_area, imagen_url) VALUES
-('Mezcla Líquidos', 'Área de preparación y mezcla de soluciones acuosas y jarabes', 'liquidos', '/images/areas/mezcla-liquidos.jpg'),
-('Mezcla Sólidos', 'Área de granulación, secado y mezcla de polvos y tabletas', 'solidos', '/images/areas/mezcla-solidos.jpg'),
-('Estériles', 'Área de fabricación aséptica y llenado estéril', 'esteriles', '/images/areas/esteriles.jpg'),
-('Semisólidos', 'Área de cremas, ungüentos y geles', 'semisolidos', '/images/areas/semisolidos.jpg'),
-('Control Calidad', 'Laboratorio de control de calidad fisicoquímico y microbiológico', 'control_calidad', '/images/areas/control-calidad.jpg'),
-('Almacén Materias Primas', 'Almacén de materias primas y excipientes', 'almacen', '/images/areas/almacen-mp.jpg'),
-('Almacén Producto Terminado', 'Almacén de producto terminado a temperatura controlada', 'almacen', '/images/areas/almacen-pt.jpg')
+INSERT INTO areas_laboratorio (nombre, sensor_id, descripcion, tipo_area, imagen_url) VALUES
+('Mezcla Líquidos', 'ARD-MEZCLA-LÍQUIDOS-01', 'Área de preparación y mezcla de soluciones acuosas y jarabes', 'liquidos', '/images/areas/mezcla-liquidos.jpg'),
+('Mezcla Sólidos', 'ARD-MEZCLA-SÓLIDOS-01', 'Área de granulación, secado y mezcla de polvos y tabletas', 'solidos', '/images/areas/mezcla-solidos.jpg'),
+('Estériles', 'ARD-ESTÉRILES-01', 'Área de fabricación aséptica y llenado estéril', 'esteriles', '/images/areas/esteriles.jpg'),
+('Semisólidos', 'ARD-SEMISÓLIDOS-01', 'Área de cremas, ungüentos y geles', 'semisolidos', '/images/areas/semisolidos.jpg'),
+('Control Calidad', 'ARD-CONTROL-CALIDAD-01', 'Laboratorio de control de calidad fisicoquímico y microbiológico', 'control_calidad', '/images/areas/control-calidad.jpg'),
+('Almacén Materias Primas', 'ARD-ALMACÉN-MP-01', 'Almacén de materias primas y excipientes', 'almacen', '/images/areas/almacen-mp.jpg'),
+('Almacén Producto Terminado', 'ARD-ALMACÉN-PT-01', 'Almacén de producto terminado a temperatura controlada', 'almacen', '/images/areas/almacen-pt.jpg')
 ON CONFLICT (nombre) DO NOTHING;
 
 -- Parámetros de seguridad por área (rangos típicos farmacéuticos)

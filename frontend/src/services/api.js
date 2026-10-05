@@ -56,7 +56,9 @@ class WS {
   connect(token) {
     if (this.socket?.readyState === WebSocket.OPEN) return
 
-    const wsUrl = (import.meta.env.VITE_WS_URL || 'http://localhost:3000').replace('http', 'ws')
+    // Sin VITE_WS_URL (Docker/Nginx) usamos el mismo origen de la página
+    const wsBase = import.meta.env.VITE_WS_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:3000')
+    const wsUrl = wsBase.replace(/^http/, 'ws')
     this.socket = new WebSocket(`${wsUrl}/socket.io/?token=${token}&EIO=4&transport=websocket`)
 
     this.socket.onopen = () => {

@@ -1,0 +1,13 @@
+{
+  "name": "pharma-monitor-gateway",
+  "version": "1.0.0",
+  "description": "Gateway Modbus TCP -> API Pharma Monitor, con PLC simulado",
+  "type": "module",
+  "scripts": {
+    "start": "node gateway.js",
+    "plc": "node plc-simulator.js"
+  },
+  "dependencies": {
+    "modbus-serial": "^8.0.17"
+  }
+}

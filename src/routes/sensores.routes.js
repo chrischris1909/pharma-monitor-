@@ -22,24 +22,35 @@ router.post('/lectura', async (req, res) => {
 
     const { sensor_id, temperatura, humedad, presion, bateria_nivel, senal_calidad, firmware_version } = req.body;
 
-    // Buscar área por sensor_id
+    // Buscar área por sensor_id exacto (Nueva columna)
     const areaResult = await query(
       `SELECT id FROM areas_laboratorio
-       WHERE activa = true AND nombre ILIKE $1
+       WHERE activa = true AND sensor_id = $1
        LIMIT 1`,
-      [`%${sensor_id.replace('ARD-', '').replace('-01', '')}%`]
+      [sensor_id]
     );
 
-    // Si no encuentra por nombre, buscar área que tenga este sensor_id en lecturas recientes
     let areaId = null;
     if (areaResult.rows.length > 0) {
       areaId = areaResult.rows[0].id;
     } else {
-      const recentResult = await query(
-        `SELECT DISTINCT area_id FROM lecturas_sensores WHERE sensor_id = $1 ORDER BY fecha_hora DESC LIMIT 1`,
-        [sensor_id]
+      // Fallback 1: Buscar por nombre similar (Legacy)
+      const nameResult = await query(
+        `SELECT id FROM areas_laboratorio
+         WHERE activa = true AND nombre ILIKE $1
+         LIMIT 1`,
+        [`%${sensor_id.replace('ARD-', '').replace('-01', '')}%`]
       );
-      if (recentResult.rows.length > 0) areaId = recentResult.rows[0].area_id;
+      if (nameResult.rows.length > 0) {
+        areaId = nameResult.rows[0].id;
+      } else {
+        // Fallback 2: Buscar área que tenga este sensor_id en lecturas recientes
+        const recentResult = await query(
+          `SELECT DISTINCT area_id FROM lecturas_sensores WHERE sensor_id = $1 ORDER BY fecha_hora DESC LIMIT 1`,
+          [sensor_id]
+        );
+        if (recentResult.rows.length > 0) areaId = recentResult.rows[0].area_id;
+      }
     }
 
     // Fallback: primera área activa
