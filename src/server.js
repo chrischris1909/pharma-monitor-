@@ -32,6 +32,9 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
@@ -103,13 +106,13 @@ app.get('/api/alertas/email', getEmailHandler);
 app.post('/api/config/email', saveEmailHandler);
 app.post('/api/alertas/email', saveEmailHandler);
 
-// Endpoint para SIMULAR EMERGENCIA y enviar el Gmail que dice "alerta"
+// Endpoint para SIMULAR EMERGENCIA y enviar el correo con formato
 app.post('/api/alertas/simular', async (req, res, next) => {
   try {
     let destinatario = process.env.ALERT_EMAILS || process.env.EMAIL_USER;
 
     try {
-      const configRes = await pool.query("SELECT valor FROM configuracion WHERE clave = 'email_notificaciones'");
+      const configRes = await pool.query("SELECT valor FROM configuracion_sistema WHERE clave = 'email_notificaciones'");
       if (configRes.rows.length > 0 && configRes.rows[0].valor) {
         destinatario = configRes.rows[0].valor;
       }
@@ -117,11 +120,25 @@ app.post('/api/alertas/simular', async (req, res, next) => {
       // Si la consulta falla, usa la variable de entorno
     }
 
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || `"Pharma Monitor" <${process.env.EMAIL_USER}>`,
-      to: destinatario,
-      subject: 'Alerta',
-      text: 'alerta'
+    // Insert alert into DB
+    const insertRes = await pool.query(`
+      INSERT INTO alertas_historial (area_id, tipo_alerta, severidad, mensaje, valor_actual, resuelta, email_enviado, email_enviado_at)
+      VALUES (1, 'emergencia_simulada', 'critica', 'Simulación de emergencia forzada por el usuario', 0, false, true, NOW())
+      RETURNING id
+    `);
+
+    // Send formatted email using the existing util
+    const { sendAlertEmail } = await import('./utils/email.js');
+    await sendAlertEmail({
+      areaNombre: 'Área de Prueba (Simulación)',
+      tipoAlerta: 'Prueba de Emergencia',
+      severidad: 'critica',
+      mensaje: 'Simulación de emergencia generada manualmente desde el Dashboard.',
+      valorActual: 99.9,
+      valorMin: 0,
+      valorMax: 30,
+      fecha: new Date().toISOString(),
+      destinatarios: destinatario.split(',').map(e => e.trim())
     });
 
     res.json({ ok: true, message: `Correo de alerta enviado exitosamente a ${destinatario}` });

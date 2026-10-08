@@ -9,7 +9,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
-import 'jspdf-autotable'
+import autoTable from 'jspdf-autotable'
 
 const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
 
@@ -88,19 +88,20 @@ export default function Values() {
     
     doc.setFontSize(11);
     doc.text(`Fecha de generación: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 30);
-    doc.text(`Filtro Área: ${filters.area_id ? areas.find(a => a.id === filters.area_id)?.nombre : 'Todas'}`, 14, 36);
+    // Use == instead of === because filters.area_id is a string
+    doc.text(`Filtro Área: ${filters.area_id ? areas.find(a => a.id == filters.area_id)?.nombre : 'Todas'}`, 14, 36);
     doc.text(`Filtro Fecha: ${filters.fecha || 'Todo el histórico'}`, 14, 42);
 
     const tableData = logs.map(l => [
       l.fecha_hora ? format(new Date(l.fecha_hora), 'dd/MM/yyyy HH:mm') : '--',
-      areas.find(a => a.id === l.area_id)?.nombre || 'N/A',
+      areas.find(a => a.id == l.area_id)?.nombre || 'N/A',
       l.temperatura != null ? Number(l.temperatura).toFixed(1) + ' °C' : '--',
       l.humedad != null ? Number(l.humedad).toFixed(0) + ' %' : '--',
       l.presion != null ? Number(l.presion).toFixed(1) + ' Pa' : '--',
       lab[l.estado] || 'Estable'
     ]);
 
-    doc.autoTable({
+    autoTable(doc, {
       startY: 50,
       head: [['Fecha y hora', 'Área', 'Temp.', 'Humedad', 'Presión', 'Estado']],
       body: tableData,
