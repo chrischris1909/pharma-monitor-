@@ -7,10 +7,12 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ws } from '../services/api'
 import OfflineBanner from './OfflineBanner'
-import { LayoutDashboard, Settings, Users, AlertTriangle, Boxes, ListChecks, LogOut, ChevronLeft, ChevronRight, Factory } from 'lucide-react'
+import { LayoutDashboard, Settings, Users, AlertTriangle, Boxes, ListChecks, LogOut, ChevronLeft, ChevronRight, Factory, Sun, Moon, LineChart, ClipboardList } from 'lucide-react'
+import LockScreen from './LockScreen'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/analytics', label: 'Analíticas', icon: LineChart },
   { path: '/areas', label: 'Áreas y variables', icon: Boxes },
   { path: '/values', label: 'Valores y registros', icon: ListChecks },
   { path: '/alerts', label: 'Alertas', icon: AlertTriangle },
@@ -19,12 +21,23 @@ const navItems = [
 
 const adminNavItems = [
   { path: '/users', label: 'Usuarios y roles', icon: Users },
+  { path: '/auditoria', label: 'Log de Auditoría', icon: ClipboardList },
 ]
 
 export default function Layout() {
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [alertCount, setAlertCount] = useState(0)
+
+  // Recupera el tema del localStorage o usa dark por defecto
+  const [theme, setTheme] = useState(() => localStorage.getItem('pharma_theme') || 'dark')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('pharma_theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
 
   useEffect(() => {
     const unsub = ws.on('alerta:nueva', () => setAlertCount(c => c + 1))
@@ -71,6 +84,13 @@ export default function Layout() {
               <span className="label" style={{ display: collapsed ? 'none' : 'block' }}>{item.label}</span>
             </NavLink>
           ))}
+
+          <button className="nav-link" onClick={toggleTheme} style={{ marginTop: 'auto' }}>
+            {theme === 'dark' ? <Sun size={20} className="icon" /> : <Moon size={20} className="icon" />}
+            <span className="label" style={{ display: collapsed ? 'none' : 'block' }}>
+              Modo {theme === 'dark' ? 'Claro' : 'Oscuro'}
+            </span>
+          </button>
           <button className="nav-link mobile-logout" onClick={logout}>
             <LogOut size={20} className="icon" />
             <span className="label">Salir</span>
@@ -144,6 +164,7 @@ export default function Layout() {
         )}
         <Outlet />
       </main>
+      <LockScreen />
     </div>
   )
 }

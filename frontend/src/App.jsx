@@ -12,6 +12,8 @@ import Alerts from './pages/Alerts'
 import Users from './pages/Users'
 import Settings from './pages/Settings'
 import LoadingScreen from './components/LoadingScreen'
+import Analytics from './pages/Analytics'
+import AuditLog from './pages/AuditLog'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -60,6 +62,8 @@ function App() {
         <Route path="areas" element={<Areas />} />
         <Route path="areas/:id" element={<AreaDetail />} />
         <Route path="values" element={<Values />} />
+        <Route path="analytics" element={<Analytics />} />
+        <Route path="auditoria" element={<AuditLog />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />

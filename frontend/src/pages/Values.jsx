@@ -17,7 +17,7 @@ export default function Values() {
   const [logs, setLogs] = useState([])
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filters, setFilters] = useState({ area_id: '', fecha: '' })
+  const [filters, setFilters] = useState({ area_id: '', fecha_desde: '', fecha_hasta: '' })
   const [page, setPage] = useState(1)
   const pageSize = 50
 
@@ -44,8 +44,8 @@ export default function Values() {
     try {
       const params = new URLSearchParams({ page, limit: pageSize })
       if (filters.area_id) params.append('area_id', filters.area_id)
-      if (filters.fecha) params.append('fecha_desde', filters.fecha + 'T00:00:00')
-      if (filters.fecha) params.append('fecha_hasta', filters.fecha + 'T23:59:59')
+      if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde + 'T00:00:00')
+      if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta + 'T23:59:59')
 
       const res = await api.get(`/sensores/lecturas?${params}`)
       const list = Array.isArray(res.data?.lecturas) ? res.data.lecturas : (Array.isArray(res.data) ? res.data : [])
@@ -62,8 +62,8 @@ export default function Values() {
     try {
       const params = new URLSearchParams()
       if (filters.area_id) params.append('area_id', filters.area_id)
-      if (filters.fecha) params.append('fecha_desde', filters.fecha + 'T00:00:00')
-      if (filters.fecha) params.append('fecha_hasta', filters.fecha + 'T23:59:59')
+      if (filters.fecha_desde) params.append('fecha_desde', filters.fecha_desde + 'T00:00:00')
+      if (filters.fecha_hasta) params.append('fecha_hasta', filters.fecha_hasta + 'T23:59:59')
       const res = await api.get(`/sensores/lecturas/export?${params}`, { responseType: 'blob' })
       const url = window.URL.createObjectURL(new Blob([res.data]))
       const link = document.createElement('a')
@@ -186,9 +186,13 @@ export default function Values() {
               {safeAreasList.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
             </select>
           </div>
-          <div style={{ flex: 1, minWidth: '180px' }}>
-            <label>Fecha</label>
-            <input type="date" value={filters.fecha} onChange={e => { setPage(1); setFilters({...filters, fecha: e.target.value}); }} />
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label>Desde</label>
+            <input type="date" value={filters.fecha_desde} onChange={e => { setPage(1); setFilters({...filters, fecha_desde: e.target.value}); }} />
+          </div>
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label>Hasta</label>
+            <input type="date" value={filters.fecha_hasta} onChange={e => { setPage(1); setFilters({...filters, fecha_hasta: e.target.value}); }} />
           </div>
         </div>
 

@@ -6,11 +6,15 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import { Plus, Edit, Trash2, Image, ChevronDown, ChevronUp } from 'lucide-react'
 import { api, ws } from '../services/api'
+import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 
 const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
 
 export default function Areas() {
+  const { user } = useAuth()
+  const isAdminOrSuper = user?.rol === 'Admin' || user?.rol === 'Supervisor'
+  
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -37,12 +41,20 @@ export default function Areas() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     try {
+      const areaData = { 
+        nombre: form.nombre, 
+        descripcion: form.descripcion, 
+        tipo_area: form.tipo_area, 
+        imagen_url: form.imagen_url,
+        ultima_calibracion: form.ultima_calibracion,
+        frecuencia_calibracion_meses: form.frecuencia_calibracion_meses
+      }
       if (editing) {
-        await api.patch(`/areas/${editing.id}`, { nombre: form.nombre, descripcion: form.descripcion, tipo_area: form.tipo_area, imagen_url: form.imagen_url })
+        await api.patch(`/areas/${editing.id}`, areaData)
         await api.put(`/areas/${editing.id}/parametros`, { temp_min: form.temp_min, temp_max: form.temp_max, humedad_min: 0, humedad_max: form.humedad_max, presion_min: form.presion_min, presion_max: form.presion_max })
         toast.success('Área actualizada')
       } else {
-        const res = await api.post('/areas', { nombre: form.nombre, descripcion: form.descripcion, tipo_area: form.tipo_area, imagen_url: form.imagen_url })
+        const res = await api.post('/areas', areaData)
         await api.put(`/areas/${res.data.area.id}/parametros`, { temp_min: form.temp_min, temp_max: form.temp_max, humedad_min: 0, humedad_max: form.humedad_max, presion_min: form.presion_min, presion_max: form.presion_max })
         toast.success('Área creada')
       }
@@ -55,13 +67,13 @@ export default function Areas() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ nombre: '', descripcion: '', tipo_area: 'solidos', imagen_url: '', temp_min: 18, temp_max: 32, humedad_max: 65, presion_min: 10, presion_max: 15 })
+    setForm({ nombre: '', descripcion: '', tipo_area: 'solidos', imagen_url: '', temp_min: 18, temp_max: 32, humedad_max: 65, presion_min: 10, presion_max: 15, ultima_calibracion: new Date().toISOString().split('T')[0], frecuencia_calibracion_meses: 6 })
     setModalOpen(true)
   }
 
   const openEdit = (a) => {
     setEditing(a)
-    setForm({ nombre: a.nombre, descripcion: a.descripcion || '', tipo_area: a.tipo_area || 'solidos', imagen_url: a.imagen_url || '', temp_min: a.temp_min || 18, temp_max: a.temp_max || 32, humedad_max: a.humedad_max || 65, presion_min: a.presion_min || 10, presion_max: a.presion_max || 15 })
+    setForm({ nombre: a.nombre, descripcion: a.descripcion || '', tipo_area: a.tipo_area || 'solidos', imagen_url: a.imagen_url || '', temp_min: a.temp_min || 18, temp_max: a.temp_max || 32, humedad_max: a.humedad_max || 65, presion_min: a.presion_min || 10, presion_max: a.presion_max || 15, ultima_calibracion: a.ultima_calibracion || new Date().toISOString().split('T')[0], frecuencia_calibracion_meses: a.frecuencia_calibracion_meses || 6 })
     setModalOpen(true)
   }
 
@@ -84,7 +96,7 @@ export default function Areas() {
     <div>
       <div className="top">
         <h2>Áreas y variables</h2>
-        <button className="btn noprint" onClick={openCreate}><Plus size={16} /> Agregar área</button>
+        {isAdminOrSuper && <button className="btn noprint" onClick={openCreate}><Plus size={16} /> Agregar área</button>}
       </div>
 
       <div className="grid g3">
@@ -106,10 +118,21 @@ export default function Areas() {
                 <span>{s.presion != null ? Number(s.presion).toFixed(1) : '--'} Pa</span>
               </div>
               <div className="mut" style={{ marginTop: '6px' }}>Rango: {a.temp_min}–{a.temp_max} °C · ≤{a.humedad_max} % · {a.presion_min}–{a.presion_max} Pa</div>
-              <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                <button className="btn sec sm" onClick={e => { e.preventDefault(); openEdit(a) }}><Edit size={14} /> Editar</button>
-                <button className="btn red sm" onClick={e => { e.preventDefault(); handleDelete(a.id) }}><Trash2 size={14} /> Eliminar</button>
+              
+              <div style={{ marginTop: '10px', fontSize: '11px', padding: '6px 8px', borderRadius: '6px', background: (a.frecuencia_calibracion_meses && a.ultima_calibracion) ? ((new Date(new Date(a.ultima_calibracion).setMonth(new Date(a.ultima_calibracion).getMonth() + a.frecuencia_calibracion_meses)) - new Date()) / (1000 * 60 * 60 * 24) < 15 ? 'rgba(255, 159, 10, 0.15)' : 'rgba(40, 205, 65, 0.1)') : 'var(--line)', color: 'var(--ink)' }}>
+                {a.ultima_calibracion ? (
+                  <span>
+                    <b>Próx. Calibración:</b> {new Date(new Date(a.ultima_calibracion).setMonth(new Date(a.ultima_calibracion).getMonth() + (a.frecuencia_calibracion_meses || 6))).toLocaleDateString()}
+                  </span>
+                ) : 'Calibración: No configurada'}
               </div>
+
+              {isAdminOrSuper && (
+                <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                  <button className="btn sec sm" onClick={e => { e.preventDefault(); openEdit(a) }}><Edit size={14} /> Editar</button>
+                  <button className="btn red sm" onClick={e => { e.preventDefault(); handleDelete(a.id) }}><Trash2 size={14} /> Eliminar</button>
+                </div>
+              )}
             </NavLink>
           )
         })}
@@ -150,6 +173,10 @@ export default function Areas() {
                 <div><label>Humedad máx. %</label><input type="number" value={form.humedad_max} onChange={e => setForm({...form, humedad_max: +e.target.value})} /></div>
                 <div><label>Presión mín. Pa</label><input type="number" value={form.presion_min} onChange={e => setForm({...form, presion_min: +e.target.value})} /></div>
                 <div><label>Presión máx. Pa</label><input type="number" value={form.presion_max} onChange={e => setForm({...form, presion_max: +e.target.value})} /></div>
+              </div>
+              <div className="row">
+                <div><label>Última calibración</label><input type="date" value={form.ultima_calibracion ? form.ultima_calibracion.split('T')[0] : ''} onChange={e => setForm({...form, ultima_calibracion: e.target.value})} /></div>
+                <div><label>Frecuencia (meses)</label><input type="number" value={form.frecuencia_calibracion_meses} onChange={e => setForm({...form, frecuencia_calibracion_meses: +e.target.value})} /></div>
               </div>
 
               <label>URL de imagen</label>

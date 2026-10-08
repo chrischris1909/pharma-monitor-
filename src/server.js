@@ -13,6 +13,7 @@ import areasRoutes from './routes/areas.routes.js';
 import sensoresRoutes from './routes/sensores.routes.js';
 import alertasRoutes from './routes/alertas.routes.js';
 import reportesRoutes from './routes/reportes.routes.js';
+import auditoriaRoutes from './routes/auditoria.routes.js';
 import { initSocket } from './services/socket.service.js';
 import { startThresholdChecker } from './services/threshold.service.js';
 
@@ -156,6 +157,7 @@ app.use('/api/areas', areasRoutes);
 app.use('/api/sensores', sensoresRoutes);
 app.use('/api/alertas', alertasRoutes);
 app.use('/api/reportes', reportesRoutes);
+app.use('/api/auditoria', auditoriaRoutes);
 
 app.use((err, req, res, next) => {
   console.error('Error:', err);

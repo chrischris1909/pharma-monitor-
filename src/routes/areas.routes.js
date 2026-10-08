@@ -59,11 +59,11 @@ router.get('/:id', authMiddleware, validateId, handleValidationErrors, async (re
 // POST /api/areas (supervisor+)
 router.post('/', authMiddleware, requireSupervisor, validateArea, handleValidationErrors, async (req, res) => {
   try {
-    const { nombre, descripcion, tipo_area, imagen_url } = req.body;
+    const { nombre, descripcion, tipo_area, imagen_url, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
     const result = await query(
-      `INSERT INTO areas_laboratorio (nombre, descripcion, tipo_area, imagen_url)
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [nombre, descripcion, tipo_area, imagen_url]
+      `INSERT INTO areas_laboratorio (nombre, descripcion, tipo_area, imagen_url, ultima_calibracion, frecuencia_calibracion_meses)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [nombre, descripcion, tipo_area, imagen_url, ultima_calibracion || null, frecuencia_calibracion_meses || 6]
     );
     // Crear parámetros por defecto
     await query(
@@ -80,18 +80,36 @@ router.post('/', authMiddleware, requireSupervisor, validateArea, handleValidati
 // PATCH /api/areas/:id (supervisor+)
 router.patch('/:id', authMiddleware, requireSupervisor, validateId, handleValidationErrors, async (req, res) => {
   try {
-    const { nombre, descripcion, tipo_area, imagen_url, activa } = req.body;
+    const { nombre, descripcion, tipo_area, imagen_url, activa, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
+    
+    // Obtener valores anteriores
+    const prev = await query('SELECT * FROM areas_laboratorio WHERE id = $1', [req.params.id]);
+    
     const result = await query(
       `UPDATE areas_laboratorio
        SET nombre = COALESCE($1, nombre), descripcion = COALESCE($2, descripcion),
            tipo_area = COALESCE($3, tipo_area), imagen_url = COALESCE($4, imagen_url),
-           activa = COALESCE($5, activa), updated_at = NOW()
-       WHERE id = $6 RETURNING *`,
-      [nombre, descripcion, tipo_area, imagen_url, activa, req.params.id]
+           activa = COALESCE($5, activa), 
+           ultima_calibracion = COALESCE($6, ultima_calibracion), 
+           frecuencia_calibracion_meses = COALESCE($7, frecuencia_calibracion_meses), 
+           updated_at = NOW()
+       WHERE id = $8 RETURNING *`,
+      [nombre, descripcion, tipo_area, imagen_url, activa, ultima_calibracion || null, frecuencia_calibracion_meses || null, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Área no encontrada' });
+
+    // Registrar en auditoría
+    if (prev.rows.length > 0) {
+      await query(
+        `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, valores_nuevos, justificacion)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [req.user.nombre || req.user.email, 'UPDATE_AREA', 'areas_laboratorio', req.params.id, JSON.stringify(prev.rows[0]), JSON.stringify(result.rows[0]), 'Actualización general de área']
+      );
+    }
+
     res.json({ area: result.rows[0] });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error actualizando área' });
   }
 });
@@ -126,6 +144,9 @@ router.get('/:id/parametros', authMiddleware, validateId, handleValidationErrors
 router.put('/:id/parametros', authMiddleware, requireSupervisor, validateId, validateParametros, handleValidationErrors, async (req, res) => {
   try {
     const p = req.body;
+    
+    const prev = await query('SELECT * FROM parametros_seguridad WHERE area_id = $1', [req.params.id]);
+
     const result = await query(
       `INSERT INTO parametros_seguridad (area_id, temp_min, temp_max, humedad_min, humedad_max, presion_min, presion_max,
          temp_critica_min, temp_critica_max, humedad_critica_min, humedad_critica_max, presion_critica_min, presion_critica_max,
@@ -145,6 +166,16 @@ router.put('/:id/parametros', authMiddleware, requireSupervisor, validateId, val
         p.temp_critica_min, p.temp_critica_max, p.humedad_critica_min, p.humedad_critica_max,
         p.presion_critica_min, p.presion_critica_max, p.notificar_email ?? true, p.notificar_sistema ?? true]
     );
+
+    // Registrar en auditoría si hubo cambio
+    if (prev.rows.length > 0) {
+      await query(
+        `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, valores_nuevos, justificacion)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [req.user.nombre || req.user.email, 'UPDATE_PARAMETROS', 'parametros_seguridad', req.params.id, JSON.stringify(prev.rows[0]), JSON.stringify(result.rows[0]), 'Actualización de parámetros de seguridad (CFR 21 Part 11)']
+      );
+    }
+
     res.json({ parametros: result.rows[0] });
   } catch (error) {
     res.status(500).json({ error: 'Error guardando parámetros' });
