@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 import { useState, useEffect, useMemo } from 'react'
 import { api } from '../services/api'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts'
@@ -5,6 +6,8 @@ import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 
 export default function Analytics() {
+  usePageTitle('Analíticas')
+
   const [logs, setLogs] = useState([])
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)

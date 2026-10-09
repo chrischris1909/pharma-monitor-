@@ -26,7 +26,7 @@ export function getTransporter() {
     transporter.verify((error) => {
       if (error) {
         console.error('❌ Email transporter error:', error.message);
-      } else {
+      } else { 
         console.log('📧 Servidor de email listo:', config.email.host);
       }
     });

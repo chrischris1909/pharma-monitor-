@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - ALERTS PAGE (CORREGIDO)
 // ============================================
@@ -10,6 +11,8 @@ import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 
 export default function Alerts() {
+  usePageTitle('Alertas')
+
   const [alerts, setAlerts] = useState([])
   const [loading, setLoading] = useState(true)
   const [emailTo, setEmailTo] = useState('')

@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - USERS PAGE (ADMIN)
 // ============================================
@@ -10,6 +11,8 @@ import toast from 'react-hot-toast'
 const roles = ['Admin', 'Gerente', 'Calidad', 'Mantenimiento', 'Operador']
 
 export default function Users() {
+  usePageTitle('Usuarios')
+
   const [users, setUsers] = useState([])
   const [institutional, setInstitutional] = useState([])
   const [loading, setLoading] = useState(true)

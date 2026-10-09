@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - SETTINGS PAGE
 // ============================================
@@ -8,6 +9,8 @@ import { api } from '../services/api'
 import toast from 'react-hot-toast'
 
 export default function Settings() {
+  usePageTitle('Configuración')
+
   const [config, setConfig] = useState({})
   const [saving, setSaving] = useState(false)
   const [dbStatus, setDbStatus] = useState('unknown')

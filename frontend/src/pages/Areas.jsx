@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - AREAS PAGE
 // ============================================
@@ -12,6 +13,8 @@ import toast from 'react-hot-toast'
 const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
 
 export default function Areas() {
+  usePageTitle('Áreas y Variables')
+
   const { user } = useAuth()
   const isAdminOrSuper = user?.rol === 'Admin' || user?.rol === 'Supervisor'
   
@@ -38,8 +41,11 @@ export default function Areas() {
     }
   }
 
+  const [saving, setSaving] = useState(false)
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setSaving(true)
     try {
       const areaData = { 
         nombre: form.nombre, 
@@ -62,6 +68,8 @@ export default function Areas() {
       loadAreas()
     } catch (err) {
       toast.error(err.response?.data?.error || 'Error guardando área')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -183,8 +191,8 @@ export default function Areas() {
               <input value={form.imagen_url} onChange={e => setForm({...form, imagen_url: e.target.value})} placeholder="https://…" />
 
               <div className="row" style={{ marginTop: '16px' }}>
-                <button className="btn" type="submit" style={{ flex: 1 }}>{editing ? 'Guardar cambios' : 'Guardar área'}</button>
-                <button className="btn sec" type="button" onClick={closeModal}>Cancelar</button>
+                <button className="btn" type="submit" style={{ flex: 1 }} disabled={saving}>{saving ? 'Guardando...' : (editing ? 'Guardar cambios' : 'Guardar área')}</button>
+                <button className="btn sec" type="button" onClick={closeModal} disabled={saving}>Cancelar</button>
               </div>
             </form>
           </div>

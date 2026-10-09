@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -6,6 +7,8 @@ import toast from 'react-hot-toast'
 import { FileText } from 'lucide-react'
 
 export default function AuditLog() {
+  usePageTitle('Log de Auditoría')
+
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
 

@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - LOGIN PAGE (CORREGIDO)
 // ============================================
@@ -8,6 +9,8 @@ import { Factory } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
+  usePageTitle('Iniciar Sesión')
+
   const navigate = useNavigate()
   const { login } = useAuth() // Usar directamente desde el contexto
   const [correo, setCorreo] = useState('')

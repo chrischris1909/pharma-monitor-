@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - VALUES PAGE (CORREGIDO)
 // ============================================
@@ -14,6 +15,8 @@ import autoTable from 'jspdf-autotable'
 const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
 
 export default function Values() {
+  usePageTitle('Valores y Registros')
+
   const [logs, setLogs] = useState([])
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)

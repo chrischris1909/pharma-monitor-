@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - DASHBOARD PAGE (NUEVO DISEÑO)
 // ============================================
@@ -33,6 +34,8 @@ function Sparkline({ series, w, h }) {
 }
 
 export default function Dashboard() {
+  usePageTitle('Dashboard')
+
   const navigate = useNavigate()
   const { user } = useAuth()
   const [areas, setAreas] = useState([])

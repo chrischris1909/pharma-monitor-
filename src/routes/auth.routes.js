@@ -26,7 +26,7 @@ router.post('/login',
       const correoNormalizado = correo.includes('@') ? correo : `${correo}@siegfried.com`;
 
       const result = await query(
-        'SELECT id, nombre, correo_institucional, password_hash, rol FROM usuarios WHERE (correo_institucional = $1 OR correo_institucional = $2) AND activo = true',
+        'SELECT id, nombre, correo_institucional, password_hash, rol, intentos_fallidos, bloqueado_hasta FROM usuarios WHERE (correo_institucional = $1 OR correo_institucional = $2) AND activo = true',
         [correo, correoNormalizado]
       );
 
@@ -35,11 +35,29 @@ router.post('/login',
       }
 
       const user = result.rows[0];
+
+      // Verificar bloqueo temporal
+      if (user.bloqueado_hasta && new Date(user.bloqueado_hasta) > new Date()) {
+        const tiempoRestante = Math.ceil((new Date(user.bloqueado_hasta) - new Date()) / 60000);
+        return res.status(429).json({ error: `Cuenta bloqueada temporalmente por intentos fallidos. Intenta de nuevo en ${tiempoRestante} minuto(s).` });
+      }
+
       const valid = await bcrypt.compare(password, user.password_hash);
 
       if (!valid) {
-        return res.status(401).json({ error: 'Credenciales inválidas' });
+        let nuevosIntentos = (user.intentos_fallidos || 0) + 1;
+        if (nuevosIntentos >= 3) {
+          // Bloquear por 15 minutos
+          await query("UPDATE usuarios SET intentos_fallidos = 0, bloqueado_hasta = NOW() + INTERVAL '15 minutes' WHERE id = $1", [user.id]);
+          return res.status(429).json({ error: 'Múltiples intentos fallidos. Cuenta bloqueada por 15 minutos.' });
+        } else {
+          await query('UPDATE usuarios SET intentos_fallidos = $1 WHERE id = $2', [nuevosIntentos, user.id]);
+          return res.status(401).json({ error: `Credenciales inválidas. Te quedan ${3 - nuevosIntentos} intento(s).` });
+        }
       }
+
+      // Login exitoso: Resetear intentos
+      await query('UPDATE usuarios SET intentos_fallidos = 0, bloqueado_hasta = NULL WHERE id = $1', [user.id]);
 
       // Generar tokens
       const accessToken = jwt.sign(

@@ -14,6 +14,7 @@ import Settings from './pages/Settings'
 import LoadingScreen from './components/LoadingScreen'
 import Analytics from './pages/Analytics'
 import AuditLog from './pages/AuditLog'
+import NotFound from './pages/NotFound'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -68,7 +69,7 @@ function App() {
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }

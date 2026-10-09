@@ -1,3 +1,4 @@
+import { usePageTitle } from '../hooks/usePageTitle'
 // ============================================
 // PHARMA MONITOR - AREA DETAIL PAGE
 // ============================================
@@ -13,6 +14,8 @@ import toast from 'react-hot-toast'
 const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
 
 export default function AreaDetail() {
+  usePageTitle('Detalles de Área')
+
   const { id } = useParams()
   const [area, setArea] = useState(null)
   const [loading, setLoading] = useState(true)
