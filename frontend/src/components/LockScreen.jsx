@@ -1,14 +1,23 @@
 import { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Lock } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function LockScreen() {
   const { user } = useAuth()
+  const location = useLocation()
   const [locked, setLocked] = useState(false)
   const [pin, setPin] = useState('')
 
+  const isTvMode = location.pathname === '/tv' || location.pathname.startsWith('/tv')
+
   useEffect(() => {
+    if (isTvMode) {
+      setLocked(false)
+      return
+    }
+
     let timeout
 
     const resetTimer = () => {
@@ -32,7 +41,7 @@ export default function LockScreen() {
       window.removeEventListener('click', resetTimer)
       window.removeEventListener('scroll', resetTimer)
     }
-  }, [locked])
+  }, [locked, isTvMode])
 
   const handleUnlock = (e) => {
     e.preventDefault()
@@ -47,7 +56,7 @@ export default function LockScreen() {
     }
   }
 
-  if (!locked) return null
+  if (isTvMode || !locked) return null
 
   return (
     <div style={{

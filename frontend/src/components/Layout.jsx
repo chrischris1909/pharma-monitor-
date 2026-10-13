@@ -7,11 +7,13 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { ws } from '../services/api'
 import OfflineBanner from './OfflineBanner'
-import { LayoutDashboard, Settings, Users, AlertTriangle, Boxes, ListChecks, LogOut, ChevronLeft, ChevronRight, Factory, Sun, Moon, LineChart, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, Settings, Users, AlertTriangle, Boxes, ListChecks, LogOut, ChevronLeft, ChevronRight, Factory, Sun, Moon, LineChart, ClipboardList, Tv } from 'lucide-react'
 import LockScreen from './LockScreen'
+import ErrorBoundary from './ErrorBoundary'
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/tv', label: 'Modo Sala (TV)', icon: Tv },
   { path: '/analytics', label: 'Analíticas', icon: LineChart },
   { path: '/areas', label: 'Áreas y variables', icon: Boxes },
   { path: '/values', label: 'Valores y registros', icon: ListChecks },
@@ -74,7 +76,7 @@ export default function Layout() {
               <span className="label" style={{ display: collapsed ? 'none' : 'block' }}>{item.label}</span>
             </NavLink>
           ))}
-          {user?.rol === 'Admin' && adminNavItems.map(item => (
+          {user?.rol?.toLowerCase() === 'admin' && adminNavItems.map(item => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -108,7 +110,13 @@ export default function Layout() {
           transition: 'opacity 0.2s, height 0.2s'
         }}>
           <div><b>{user?.nombre}</b></div>
-          <div style={{ color: '#e9d5da', opacity: 0.7 }}>{user?.rol}</div>
+          <div style={{ color: '#e9d5da', opacity: 0.85, fontSize: '11.5px', marginTop: '2px' }}>
+            {user?.rol?.toLowerCase() === 'admin'
+              ? '👑 Gerente General (Global)'
+              : user?.rol?.toLowerCase() === 'supervisor'
+              ? `🛡️ Encargado ${user?.area_nombre ? `• ${user?.area_nombre}` : ''}`
+              : `👷 Empleado ${user?.area_nombre ? `• ${user?.area_nombre}` : ''}`}
+          </div>
           <button
             className="btn sec"
             style={{
@@ -162,7 +170,9 @@ export default function Layout() {
             </NavLink>
           </div>
         )}
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
       <LockScreen />
     </div>

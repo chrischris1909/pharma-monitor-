@@ -15,6 +15,7 @@ import LoadingScreen from './components/LoadingScreen'
 import Analytics from './pages/Analytics'
 import AuditLog from './pages/AuditLog'
 import NotFound from './pages/NotFound'
+import TvMode from './pages/TvMode'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -69,6 +70,14 @@ function App() {
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
       </Route>
+      <Route
+        path="/tv"
+        element={
+          <PrivateRoute>
+            <TvMode />
+          </PrivateRoute>
+        }
+      />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )
