@@ -4,6 +4,7 @@
 
 import nodemailer from 'nodemailer';
 import { config } from '../config/index.js';
+import { query } from '../db/pool.js';
 
 let transporter = null;
 
@@ -215,4 +216,54 @@ function calculateDeviation(actual, min, max) {
   return Math.round(deviation);
 }
 
-export default { sendAlertEmail, sendDailyReportEmail };
+export async function getRecipientsForArea(areaId) {
+  const recipients = new Set();
+
+  try {
+    // 1. Gerente General / Admin: recibe TODAS las alertas de TODAS las áreas
+    const admins = await query(
+      "SELECT correo_institucional FROM usuarios WHERE LOWER(rol) = 'admin' AND (activo = true OR activo IS NULL)"
+    );
+    admins.rows.forEach(r => {
+      if (r.correo_institucional) recipients.add(r.correo_institucional.trim().toLowerCase());
+    });
+
+    // 2. Encargados de área (Supervisor): solo reciben la alerta de SU área asignada
+    if (areaId) {
+      const supervisors = await query(
+        "SELECT correo_institucional FROM usuarios WHERE LOWER(rol) = 'supervisor' AND area_id = $1 AND (activo = true OR activo IS NULL)",
+        [areaId]
+      );
+      supervisors.rows.forEach(r => {
+        if (r.correo_institucional) recipients.add(r.correo_institucional.trim().toLowerCase());
+      });
+
+      // 3. Correos institucionales registrados específicamente para esta área o de alcance global
+      const instEmails = await query(
+        "SELECT correo FROM correos_institucionales WHERE (activo = true OR activo IS NULL) AND (area_id = $1 OR area_id IS NULL OR LOWER(cargo) LIKE '%gerente%')",
+        [areaId]
+      );
+      instEmails.rows.forEach(r => {
+        if (r.correo) recipients.add(r.correo.trim().toLowerCase());
+      });
+    }
+  } catch (err) {
+    console.error('Error obteniendo destinatarios segmentados por área:', err);
+  }
+
+  // 4. Si la lista está vacía, usar configuración de respaldo
+  if (recipients.size === 0) {
+    if (process.env.ALERT_EMAILS) {
+      process.env.ALERT_EMAILS.split(',').forEach(e => {
+        const clean = e.trim().toLowerCase();
+        if (clean) recipients.add(clean);
+      });
+    } else if (process.env.EMAIL_USER) {
+      recipients.add(process.env.EMAIL_USER.trim().toLowerCase());
+    }
+  }
+
+  return Array.from(recipients).filter(Boolean);
+}
+
+export default { sendAlertEmail, sendDailyReportEmail, getRecipientsForArea };

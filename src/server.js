@@ -14,6 +14,7 @@ import sensoresRoutes from './routes/sensores.routes.js';
 import alertasRoutes from './routes/alertas.routes.js';
 import reportesRoutes from './routes/reportes.routes.js';
 import auditoriaRoutes from './routes/auditoria.routes.js';
+import correosRoutes from './routes/correos.routes.js';
 import { initSocket } from './services/socket.service.js';
 import { startThresholdChecker } from './services/threshold.service.js';
 
@@ -107,44 +108,66 @@ app.get('/api/alertas/email', getEmailHandler);
 app.post('/api/config/email', saveEmailHandler);
 app.post('/api/alertas/email', saveEmailHandler);
 
-// Endpoint para SIMULAR EMERGENCIA y enviar el correo con formato
+// Endpoint para SIMULAR EMERGENCIA y enviar el correo segmentado por área
 app.post('/api/alertas/simular', async (req, res, next) => {
   try {
-    let destinatario = process.env.ALERT_EMAILS || process.env.EMAIL_USER;
+    let targetAreaId = req.body.area_id;
+    let targetAreaName = 'Área General';
 
-    try {
-      const configRes = await pool.query("SELECT valor FROM configuracion_sistema WHERE clave = 'email_notificaciones'");
-      if (configRes.rows.length > 0 && configRes.rows[0].valor) {
-        destinatario = configRes.rows[0].valor;
+    if (targetAreaId) {
+      const areaCheck = await pool.query('SELECT id, nombre FROM areas_laboratorio WHERE id = $1', [targetAreaId]);
+      if (areaCheck.rows.length > 0) {
+        targetAreaName = areaCheck.rows[0].nombre;
       }
-    } catch (e) {
-      // Si la consulta falla, usa la variable de entorno
+    } else {
+      const firstArea = await pool.query('SELECT id, nombre FROM areas_laboratorio WHERE activa = true LIMIT 1');
+      if (firstArea.rows.length > 0) {
+        targetAreaId = firstArea.rows[0].id;
+        targetAreaName = firstArea.rows[0].nombre;
+      }
     }
 
-    // Insert alert into DB
+    const { sendAlertEmail, getRecipientsForArea } = await import('./utils/email.js');
+    const destinatarios = await getRecipientsForArea(targetAreaId);
+
+    // Insert alert into DB con el UUID del área
     const insertRes = await pool.query(`
       INSERT INTO alertas_historial (area_id, tipo_alerta, severidad, mensaje, valor_actual, resuelta, email_enviado, email_enviado_at)
-      VALUES (1, 'emergencia_simulada', 'critica', 'Simulación de emergencia forzada por el usuario', 0, false, true, NOW())
-      RETURNING id
-    `);
+      VALUES ($1, 'emergencia_simulada', 'critica', $2, 99.9, false, true, NOW())
+      RETURNING *
+    `, [targetAreaId, `Simulación de emergencia forzada en ${targetAreaName}`]);
+
+    const alertaGuardada = insertRes.rows[0];
+
+    // Emitir por WebSocket si io está disponible
+    const io = req.app.get('io');
+    if (io) {
+      io.emitAlert?.(alertaGuardada);
+    }
 
     // Send formatted email using the existing util
-    const { sendAlertEmail } = await import('./utils/email.js');
-    await sendAlertEmail({
-      areaNombre: 'Área de Prueba (Simulación)',
-      tipoAlerta: 'Prueba de Emergencia',
-      severidad: 'critica',
-      mensaje: 'Simulación de emergencia generada manualmente desde el Dashboard.',
-      valorActual: 99.9,
-      valorMin: 0,
-      valorMax: 30,
-      fecha: new Date().toISOString(),
-      destinatarios: destinatario.split(',').map(e => e.trim())
-    });
+    if (destinatarios.length > 0) {
+      await sendAlertEmail({
+        areaNombre: targetAreaName,
+        tipoAlerta: 'Prueba de Emergencia (Simulación)',
+        severidad: 'critica',
+        mensaje: `Simulación de emergencia generada en ${targetAreaName}. Notificación dirigida únicamente a los responsables de esta área y al Gerente General.`,
+        valorActual: 99.9,
+        valorMin: 0,
+        valorMax: 30,
+        fecha: new Date().toISOString(),
+        destinatarios
+      });
+    }
 
-    res.json({ ok: true, message: `Correo de alerta enviado exitosamente a ${destinatario}` });
+    res.json({
+      ok: true,
+      message: `Alerta enviada exitosamente a los responsables de ${targetAreaName}: ${destinatarios.join(', ')}`,
+      destinatarios,
+      area: targetAreaName
+    });
   } catch (err) {
-    console.error('Error al enviar correo de alerta:', err);
+    console.error('Error al enviar correo de alerta simulada:', err);
     res.status(500).json({ error: 'Error enviando el correo de alerta: ' + err.message });
   }
 });
@@ -158,6 +181,7 @@ app.use('/api/sensores', sensoresRoutes);
 app.use('/api/alertas', alertasRoutes);
 app.use('/api/reportes', reportesRoutes);
 app.use('/api/auditoria', auditoriaRoutes);
+app.use('/api/correos_institucionales', correosRoutes);
 
 app.use((err, req, res, next) => {
   console.error('Error:', err);

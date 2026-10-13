@@ -98,12 +98,15 @@ export default function Dashboard() {
       toast.success('Simulación de emergencia terminada')
     } else {
       try {
-        const firstArea = areas[0]
-        if (firstArea) {
-          setEmergency(firstArea.area_id)
-          toast(`Simulando emergencia en ${firstArea.nombre}`, { icon: '⚡' })
-          await api.post('/alertas/simular')
-          toast.success('Correo de emergencia enviado al gerente.')
+        const targetArea = (user?.area_id && areas.find(a => (a.id === user.area_id || a.area_id === user.area_id))) || areas[0]
+        if (targetArea) {
+          const areaId = targetArea.id || targetArea.area_id
+          setEmergency(areaId)
+          toast(`Simulando emergencia en ${targetArea.nombre}`, { icon: '🚨' })
+          const res = await api.post('/alertas/simular', { area_id: areaId })
+          toast.success(res.data?.message || 'Correo de alerta enviado a los responsables de esta área')
+        } else {
+          toast.error('No hay áreas activas disponibles')
         }
       } catch (err) {
         toast.error('Error al notificar emergencia')
@@ -132,11 +135,15 @@ export default function Dashboard() {
       <div className="top">
         <div>
           <h2>{gr}, {userName}.</h2>
-          <div className="mut">Planta de producción · Control ambiental BPM · {new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+          <div className="mut">
+            Planta de producción · {user?.rol?.toLowerCase() === 'admin' ? '👑 Control Global (Todas las áreas)' : `📍 Área Asignada: ${user?.area_nombre || 'Sector'}`} · {new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </div>
         </div>
-        <button className="btn red noprint" onClick={handleEmergency}>
-          {emergency ? 'Terminar simulación' : 'Simular emergencia'}
-        </button>
+        {user?.rol?.toLowerCase() !== 'operador' && (
+          <button className="btn red noprint" onClick={handleEmergency}>
+            {emergency ? 'Terminar simulación' : 'Simular emergencia'}
+          </button>
+        )}
       </div>
 
       {tip && (
@@ -187,6 +194,7 @@ export default function Dashboard() {
           <div className="card">
             <b>＋ Acciones rápidas</b>
             <div className="qg noprint">
+              <button className="qa" onClick={() => navigate('/tv')}><i>📺</i>Modo Sala / TV</button>
               <button className="qa" onClick={handleEmergency}><i>▲</i>Simular emergencia</button>
               <button className="qa" onClick={() => navigate('/values')}><i>☰</i>Ver registros</button>
               <button className="qa" onClick={() => window.print()}><i>⎙</i>Descargar PDF</button>

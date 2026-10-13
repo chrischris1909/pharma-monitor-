@@ -26,7 +26,10 @@ router.post('/login',
       const correoNormalizado = correo.includes('@') ? correo : `${correo}@siegfried.com`;
 
       const result = await query(
-        'SELECT id, nombre, correo_institucional, password_hash, rol, intentos_fallidos, bloqueado_hasta FROM usuarios WHERE (correo_institucional = $1 OR correo_institucional = $2) AND activo = true',
+        `SELECT u.id, u.nombre, u.correo_institucional, u.password_hash, u.rol, u.intentos_fallidos, u.bloqueado_hasta, u.area_id, a.nombre as area_nombre
+         FROM usuarios u
+         LEFT JOIN areas_laboratorio a ON a.id = u.area_id
+         WHERE (u.correo_institucional = $1 OR u.correo_institucional = $2) AND (u.activo = true OR u.activo IS NULL)`,
         [correo, correoNormalizado]
       );
 
@@ -84,7 +87,14 @@ router.post('/login',
       await query('UPDATE usuarios SET ultimo_acceso = NOW() WHERE id = $1', [user.id]);
 
       res.json({
-        user: { id: user.id, nombre: user.nombre, correo: user.correo_institucional, rol: user.rol },
+        user: {
+          id: user.id,
+          nombre: user.nombre,
+          correo: user.correo_institucional,
+          rol: user.rol,
+          area_id: user.area_id,
+          area_nombre: user.area_nombre
+        },
         accessToken,
         refreshToken,
       });
@@ -179,12 +189,15 @@ router.post('/register',
     body('nombre').trim().isLength({ min: 2, max: 150 }),
     body('correo').isEmail().normalizeEmail(),
     body('password').isLength({ min: 6 }),
-    body('rol').isIn(['admin', 'supervisor', 'operador', 'usuario', 'lectura']),
+    body('rol').customSanitizer(v => v ? v.toLowerCase() : v).isIn(['admin', 'supervisor', 'operador', 'usuario', 'lectura', 'gerente', 'calidad', 'mantenimiento']),
     handleValidationErrors,
   ],
   async (req, res) => {
     try {
-      const { nombre, correo, password, rol } = req.body;
+      const { nombre, correo, password, rol, area_id } = req.body;
+      const rolNormalizado = (rol || 'operador').toLowerCase();
+      // Si es admin (Gerente General), tiene acceso global a todas las áreas (area_id = null)
+      const targetAreaId = rolNormalizado === 'admin' ? null : (area_id || null);
 
       const existing = await query('SELECT id FROM usuarios WHERE correo_institucional = $1', [correo]);
       if (existing.rows.length > 0) {
@@ -193,10 +206,17 @@ router.post('/register',
 
       const passwordHash = await bcrypt.hash(password, 10);
       const result = await query(
-        `INSERT INTO usuarios (nombre, correo_institucional, password_hash, rol)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, nombre, correo_institucional, rol, created_at`,
-        [nombre, correo, passwordHash, rol]
+        `INSERT INTO usuarios (nombre, correo_institucional, password_hash, rol, area_id)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, nombre, correo_institucional, rol, area_id, created_at`,
+        [nombre, correo, passwordHash, rolNormalizado, targetAreaId]
+      );
+
+      // Registrar en auditoría
+      await query(
+        `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_nuevos, justificacion)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [req.user.nombre || req.user.correo_institucional, 'CREATE_USER', 'usuarios', 0, JSON.stringify({ nombre, correo, rol: rolNormalizado, area_id: targetAreaId }), 'Creación de nuevo usuario con área asignada']
       );
 
       res.status(201).json({ user: result.rows[0] });
@@ -211,7 +231,10 @@ router.post('/register',
 router.get('/users', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const result = await query(
-      'SELECT id, nombre, correo_institucional, rol, activo, ultimo_acceso, created_at FROM usuarios ORDER BY created_at DESC'
+      `SELECT u.id, u.nombre, u.correo_institucional, u.rol, u.activo, u.ultimo_acceso, u.created_at, u.area_id, a.nombre as area_nombre
+       FROM usuarios u
+       LEFT JOIN areas_laboratorio a ON a.id = u.area_id
+       ORDER BY u.created_at DESC`
     );
     res.json({ users: result.rows });
   } catch (error) {
@@ -223,18 +246,69 @@ router.get('/users', authMiddleware, requireAdmin, async (req, res) => {
 router.patch('/users/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, rol, activo } = req.body;
+    const { nombre, rol, activo, area_id } = req.body;
+    const rolNormalizado = rol ? rol.toLowerCase() : undefined;
+    const targetAreaId = rolNormalizado === 'admin' ? null : area_id;
 
     const result = await query(
-      `UPDATE usuarios SET nombre = COALESCE($1, nombre), rol = COALESCE($2, rol), activo = COALESCE($3, activo), updated_at = NOW()
-       WHERE id = $4 RETURNING id, nombre, correo_institucional, rol, activo`,
-      [nombre, rol, activo, id]
+      `UPDATE usuarios
+       SET nombre = COALESCE($1, nombre),
+           rol = COALESCE($2, rol),
+           activo = COALESCE($3, activo),
+           area_id = CASE WHEN $4::boolean IS TRUE THEN $5::uuid ELSE area_id END,
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING id, nombre, correo_institucional, rol, activo, area_id`,
+      [nombre, rolNormalizado, activo, area_id !== undefined, targetAreaId || null, id]
     );
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json({ user: result.rows[0] });
+
+    // Obtener datos frescos con el nombre del área
+    const fullUser = await query(
+      `SELECT u.id, u.nombre, u.correo_institucional, u.rol, u.activo, u.area_id, a.nombre as area_nombre
+       FROM usuarios u
+       LEFT JOIN areas_laboratorio a ON a.id = u.area_id
+       WHERE u.id = $1`,
+      [id]
+    );
+
+    // Registrar en auditoría
+    await query(
+      `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_nuevos, justificacion)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.nombre || req.user.correo_institucional, 'UPDATE_USER', 'usuarios', 0, JSON.stringify(fullUser.rows[0]), 'Actualización de datos, rol o área asignada de usuario']
+    );
+
+    res.json({ user: fullUser.rows[0] });
   } catch (error) {
     res.status(500).json({ error: 'Error actualizando usuario' });
+  }
+});
+
+// DELETE /api/auth/users/:id (solo admin)
+router.delete('/users/:id', authMiddleware, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (id === req.user.id) {
+      return res.status(400).json({ error: 'No puedes eliminar tu propio usuario administrador' });
+    }
+    const userToDelete = await query('SELECT id, nombre, correo_institucional FROM usuarios WHERE id = $1', [id]);
+    if (userToDelete.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    await query('DELETE FROM usuarios WHERE id = $1', [id]);
+
+    // Registrar en auditoría
+    await query(
+      `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, justificacion)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.user.nombre || req.user.correo_institucional, 'DELETE_USER', 'usuarios', 0, JSON.stringify(userToDelete.rows[0]), 'Eliminación de usuario del sistema']
+    );
+
+    res.json({ message: 'Usuario eliminado exitosamente' });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ error: 'Error eliminando usuario' });
   }
 });
 

@@ -26,9 +26,12 @@ export async function authMiddleware(req, res, next) {
       return res.status(401).json({ error: 'Token inválido' });
     }
 
-    // Verificar que el usuario existe y está activo
+    // Verificar que el usuario existe y está activo (incluyendo área asignada)
     const result = await query(
-      'SELECT id, nombre, correo_institucional, rol, activo FROM usuarios WHERE id = $1',
+      `SELECT u.id, u.nombre, u.correo_institucional, u.rol, u.activo, u.area_id, a.nombre as area_nombre
+       FROM usuarios u
+       LEFT JOIN areas_laboratorio a ON a.id = u.area_id
+       WHERE u.id = $1`,
       [decoded.userId]
     );
 
@@ -68,7 +71,9 @@ export function requireRole(...roles) {
     if (!req.user) {
       return res.status(401).json({ error: 'Autenticación requerida' });
     }
-    if (!roles.includes(req.user.rol)) {
+    const current = (req.user.rol || '').toLowerCase();
+    const allowed = roles.map(r => r.toLowerCase());
+    if (!allowed.includes(current)) {
       return res.status(403).json({ error: 'Permisos insuficientes', required: roles, current: req.user.rol });
     }
     next();

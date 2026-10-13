@@ -13,16 +13,41 @@ const router = express.Router();
 // ÁREAS
 // ============================================
 
-// GET /api/areas - Listar todas
+// GET /api/areas - Listar todas (o filtradas por área asignada si no es admin)
 router.get('/', authMiddleware, async (req, res) => {
   try {
+    let whereClause = 'WHERE a.activa = true';
+    const params = [];
+    if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id) {
+      whereClause += ' AND a.id = $1';
+      params.push(req.user.area_id);
+    }
+
     const result = await query(`
-      SELECT a.*, ps.temp_min, ps.temp_max, ps.humedad_min, ps.humedad_max, ps.presion_min, ps.presion_max
+      SELECT a.*,
+             COALESCE(ps.temp_min, 18) as temp_min,
+             COALESCE(ps.temp_max, 25) as temp_max,
+             COALESCE(ps.humedad_min, 0) as humedad_min,
+             COALESCE(ps.humedad_max, 65) as humedad_max,
+             COALESCE(ps.presion_min, 10) as presion_min,
+             COALESCE(ps.presion_max, 15) as presion_max,
+             l.temperatura,
+             l.humedad,
+             l.presion,
+             l.fecha_hora as ultima_lectura,
+             CASE
+               WHEN l.temperatura IS NULL THEN 'sin_datos'
+               WHEN l.temperatura < ps.temp_min OR l.temperatura > ps.temp_max THEN 'bad'
+               WHEN l.humedad > ps.humedad_max THEN 'bad'
+               WHEN l.presion < ps.presion_min OR l.presion > ps.presion_max THEN 'bad'
+               ELSE 'ok'
+             END as estado
       FROM areas_laboratorio a
       LEFT JOIN parametros_seguridad ps ON ps.area_id = a.id
-      WHERE a.activa = true
+      LEFT JOIN v_ultima_lectura_area l ON l.area_id = a.id
+      ${whereClause}
       ORDER BY a.nombre
-    `);
+    `, params);
     res.json({ areas: result.rows });
   } catch (error) {
     console.error('Error areas:', error);
@@ -30,12 +55,19 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/areas/estado - Estado actual para dashboard
+// GET /api/areas/estado - Estado actual para dashboard (filtrado por área si no es admin)
 router.get('/estado', authMiddleware, async (req, res) => {
   try {
-    const result = await query('SELECT * FROM v_estado_areas');
+    let queryStr = 'SELECT * FROM v_estado_areas';
+    const params = [];
+    if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id) {
+      queryStr += ' WHERE area_id = $1';
+      params.push(req.user.area_id);
+    }
+    const result = await query(queryStr, params);
     res.json({ areas: result.rows });
   } catch (error) {
+    console.error('Error obteniendo estado de áreas:', error);
     res.status(500).json({ error: 'Error obteniendo estado' });
   }
 });
@@ -43,10 +75,26 @@ router.get('/estado', authMiddleware, async (req, res) => {
 // GET /api/areas/:id
 router.get('/:id', authMiddleware, validateId, handleValidationErrors, async (req, res) => {
   try {
+    // Si no es admin y tiene área asignada distinta a la solicitada, denegar acceso
+    if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id && req.user.area_id !== req.params.id) {
+      return res.status(403).json({ error: 'No tienes permiso para acceder a esta área' });
+    }
+
     const result = await query(`
-      SELECT a.*, ps.*
+      SELECT a.*, ps.*,
+             COALESCE(ps.temp_min, 18) as temp_min,
+             COALESCE(ps.temp_max, 25) as temp_max,
+             COALESCE(ps.humedad_min, 0) as humedad_min,
+             COALESCE(ps.humedad_max, 65) as humedad_max,
+             COALESCE(ps.presion_min, 10) as presion_min,
+             COALESCE(ps.presion_max, 15) as presion_max,
+             l.temperatura,
+             l.humedad,
+             l.presion,
+             l.fecha_hora as ultima_lectura
       FROM areas_laboratorio a
       LEFT JOIN parametros_seguridad ps ON ps.area_id = a.id
+      LEFT JOIN v_ultima_lectura_area l ON l.area_id = a.id
       WHERE a.id = $1
     `, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Área no encontrada' });
@@ -80,6 +128,11 @@ router.post('/', authMiddleware, requireSupervisor, validateArea, handleValidati
 // PATCH /api/areas/:id (supervisor+)
 router.patch('/:id', authMiddleware, requireSupervisor, validateId, handleValidationErrors, async (req, res) => {
   try {
+    // Si es supervisor, solo puede modificar su propia área
+    if (req.user.rol?.toLowerCase() === 'supervisor' && req.user.area_id && req.user.area_id !== req.params.id) {
+      return res.status(403).json({ error: 'Solo tienes permisos para modificar tu área asignada' });
+    }
+
     const { nombre, descripcion, tipo_area, imagen_url, activa, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
     
     // Obtener valores anteriores
@@ -133,7 +186,9 @@ router.delete('/:id', authMiddleware, requireAdmin, validateId, handleValidation
 router.get('/:id/parametros', authMiddleware, validateId, handleValidationErrors, async (req, res) => {
   try {
     const result = await query('SELECT * FROM parametros_seguridad WHERE area_id = $1', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Parámetros no configurados' });
+    if (result.rows.length === 0) {
+      return res.json({ parametros: { temp_min: 18, temp_max: 25, humedad_min: 0, humedad_max: 65, presion_min: 10, presion_max: 15 } });
+    }
     res.json({ parametros: result.rows[0] });
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo parámetros' });
@@ -143,6 +198,11 @@ router.get('/:id/parametros', authMiddleware, validateId, handleValidationErrors
 // PUT /api/areas/:id/parametros (supervisor+)
 router.put('/:id/parametros', authMiddleware, requireSupervisor, validateId, validateParametros, handleValidationErrors, async (req, res) => {
   try {
+    // Si es supervisor, solo puede modificar parámetros de su propia área
+    if (req.user.rol?.toLowerCase() === 'supervisor' && req.user.area_id && req.user.area_id !== req.params.id) {
+      return res.status(403).json({ error: 'Solo tienes permisos para modificar los parámetros de tu área asignada' });
+    }
+
     const p = req.body;
     
     const prev = await query('SELECT * FROM parametros_seguridad WHERE area_id = $1', [req.params.id]);

@@ -6,7 +6,7 @@
 import cron from 'node-cron';
 import { query, transaction } from '../db/pool.js';
 import { config } from '../config/index.js';
-import { sendAlertEmail } from '../utils/email.js';
+import { sendAlertEmail, getRecipientsForArea } from '../utils/email.js';
 
 let checkInterval = null;
 
@@ -75,8 +75,9 @@ async function checkThresholds(io) {
           if (io) {
             io.emitAlert(saved);
           }
-          // Enviar email si corresponde
-          if (area.notificar_email && config.email.alertRecipients.length > 0) {
+          // Enviar email segmentado por área (Gerente General + Encargados del área)
+          const destinatarios = await getRecipientsForArea(area.id);
+          if (destinatarios && destinatarios.length > 0) {
             await sendAlertEmail({
               areaNombre: area.nombre,
               tipoAlerta: alerta.tipo,
@@ -86,7 +87,7 @@ async function checkThresholds(io) {
               valorMin: alerta.min,
               valorMax: alerta.max,
               fecha: area.fecha_hora,
-              destinatarios: config.email.alertRecipients,
+              destinatarios,
             });
             // Marcar email como enviado
             await query('UPDATE alertas_historial SET email_enviado = true, email_enviado_at = NOW() WHERE id = $1', [saved.id]);

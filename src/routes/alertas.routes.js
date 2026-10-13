@@ -19,7 +19,14 @@ router.get('/', authMiddleware, [...validatePagination, ...validateDateRange, ha
     const params = [];
     let paramIdx = 1;
 
-    if (area_id) { where += ` AND ah.area_id = $${paramIdx++}`; params.push(area_id); }
+    // Si no es admin y tiene área asignada, filtrar automáticamente por su área
+    if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id) {
+      where += ` AND ah.area_id = $${paramIdx++}`;
+      params.push(req.user.area_id);
+    } else if (area_id) {
+      where += ` AND ah.area_id = $${paramIdx++}`;
+      params.push(area_id);
+    }
     if (tipo) { where += ` AND ah.tipo_alerta = $${paramIdx++}`; params.push(tipo); }
     if (severidad) { where += ` AND ah.severidad = $${paramIdx++}`; params.push(severidad); }
     if (resuelta !== undefined) { where += ` AND ah.resuelta = $${paramIdx++}`; params.push(resuelta === 'true'); }
@@ -65,7 +72,14 @@ router.get('/', authMiddleware, [...validatePagination, ...validateDateRange, ha
 // GET /api/alertas/pendientes - Alertas no resueltas (para badge)
 router.get('/pendientes', authMiddleware, async (req, res) => {
   try {
-    const result = await query('SELECT * FROM v_alertas_pendientes LIMIT 50');
+    let queryStr = 'SELECT * FROM v_alertas_pendientes';
+    const params = [];
+    if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id) {
+      queryStr += ' WHERE area_id = $1';
+      params.push(req.user.area_id);
+    }
+    queryStr += ' LIMIT 50';
+    const result = await query(queryStr, params);
     res.json({ alertas: result.rows, count: result.rows.length });
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo alertas pendientes' });
@@ -154,21 +168,8 @@ router.post('/:id/reenviar-email', authMiddleware, requireSupervisor, validateId
     if (alertaResult.rows.length === 0) return res.status(404).json({ error: 'Alerta no encontrada' });
 
     const alerta = alertaResult.rows[0];
-    const { sendAlertEmail } = await import('../utils/email.js');
-
-    let destinatarios = process.env.ALERT_EMAILS?.split(',').map(e => e.trim()).filter(Boolean) || [];
-    try {
-      const configRes = await query("SELECT valor FROM configuracion_sistema WHERE clave = 'alert_email'");
-      if (configRes.rows.length > 0 && configRes.rows[0].valor) {
-        destinatarios = [configRes.rows[0].valor];
-      }
-    } catch (e) {
-      console.warn("No se pudo cargar configuracion de DB", e.message);
-    }
-
-    if (destinatarios.length === 0) {
-      destinatarios = [process.env.EMAIL_USER];
-    }
+    const { sendAlertEmail, getRecipientsForArea } = await import('../utils/email.js');
+    const destinatarios = await getRecipientsForArea(alerta.area_id);
 
     const emailResult = await sendAlertEmail({
       areaNombre: alerta.area_nombre,

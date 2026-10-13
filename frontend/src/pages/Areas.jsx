@@ -16,7 +16,8 @@ export default function Areas() {
   usePageTitle('Áreas y Variables')
 
   const { user } = useAuth()
-  const isAdminOrSuper = user?.rol === 'Admin' || user?.rol === 'Supervisor'
+  const userRol = user?.rol?.toLowerCase() || ''
+  const isAdminOrSuper = userRol === 'admin' || userRol === 'supervisor'
   
   const [areas, setAreas] = useState([])
   const [loading, setLoading] = useState(true)
@@ -24,16 +25,33 @@ export default function Areas() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ nombre: '', descripcion: '', tipo_area: 'solidos', imagen_url: '', temp_min: 18, temp_max: 32, humedad_max: 65, presion_min: 10, presion_max: 15 })
 
+  const getCalibrationInfo = (ultima, meses) => {
+    if (!ultima) return { label: 'Calibración: No configurada', isDueSoon: false }
+    try {
+      const d = new Date(ultima)
+      if (isNaN(d.getTime())) return { label: 'Calibración: Fecha inválida', isDueSoon: false }
+      const prox = new Date(d)
+      prox.setMonth(prox.getMonth() + (Number(meses) || 6))
+      const diffDays = (prox.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      return {
+        label: `Próx. Calibración: ${prox.toLocaleDateString()}`,
+        isDueSoon: diffDays < 15
+      }
+    } catch {
+      return { label: 'Calibración: Error de cálculo', isDueSoon: false }
+    }
+  }
+
   useEffect(() => {
     loadAreas()
-    const unsub = ws.on('lectura:nueva', (l) => setAreas(prev => prev.map(a => a.id === l.area_id ? { ...a, ...l } : a)))
+    const unsub = ws.on('lectura:nueva', (l) => setAreas(prev => (prev || []).map(a => a.id === l.area_id ? { ...a, ...l } : a)))
     return () => unsub()
   }, [])
 
   const loadAreas = async () => {
     try {
       const res = await api.get('/areas')
-      setAreas(res.data.areas)
+      setAreas(res.data?.areas || [])
     } catch (err) {
       toast.error('Error cargando áreas')
     } finally {
@@ -103,13 +121,25 @@ export default function Areas() {
   return (
     <div>
       <div className="top">
-        <h2>Áreas y variables</h2>
-        {isAdminOrSuper && <button className="btn noprint" onClick={openCreate}><Plus size={16} /> Agregar área</button>}
+        <div>
+          <h2>Áreas y variables</h2>
+          <div className="mut">
+            {userRol === 'admin'
+              ? 'Control global del laboratorio'
+              : `Sector: ${user?.area_nombre || 'Área Asignada'}`}
+          </div>
+        </div>
+        {userRol === 'admin' && (
+          <button className="btn noprint" onClick={openCreate}>
+            <Plus size={16} /> Agregar área
+          </button>
+        )}
       </div>
 
       <div className="grid g3">
-        {areas.map(a => {
+        {(areas || []).map(a => {
           const s = a
+          const calib = getCalibrationInfo(a.ultima_calibracion, a.frecuencia_calibracion_meses)
           return (
             <NavLink to={`/areas/${a.id}`} key={a.id} className="card area" style={{ textDecoration: 'none', color: 'inherit' }}>
               <div className="ph" style={a.imagen_url ? { background: `linear-gradient(rgba(90,15,36,.3),rgba(90,15,36,.8)),url('${a.imagen_url}') center/cover` } : {}}>
@@ -117,7 +147,7 @@ export default function Areas() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <b>{a.nombre}</b>
-                <span className={`pill ${s.estado === 'ok' ? '' : s.estado}`}>{lab[s.estado]}</span>
+                <span className={`pill ${s.estado === 'ok' ? '' : s.estado || 'sec'}`}>{lab[s.estado] || 'Estable'}</span>
               </div>
               <p className="mut" style={{ margin: '6px 0 10px' }}>{a.descripcion || 'Sin descripción.'}</p>
               <div style={{ display: 'flex', gap: '16px', fontWeight: 700, fontSize: '14px' }}>
@@ -127,18 +157,27 @@ export default function Areas() {
               </div>
               <div className="mut" style={{ marginTop: '6px' }}>Rango: {a.temp_min}–{a.temp_max} °C · ≤{a.humedad_max} % · {a.presion_min}–{a.presion_max} Pa</div>
               
-              <div style={{ marginTop: '10px', fontSize: '11px', padding: '6px 8px', borderRadius: '6px', background: (a.frecuencia_calibracion_meses && a.ultima_calibracion) ? ((new Date(new Date(a.ultima_calibracion).setMonth(new Date(a.ultima_calibracion).getMonth() + a.frecuencia_calibracion_meses)) - new Date()) / (1000 * 60 * 60 * 24) < 15 ? 'rgba(255, 159, 10, 0.15)' : 'rgba(40, 205, 65, 0.1)') : 'var(--line)', color: 'var(--ink)' }}>
-                {a.ultima_calibracion ? (
-                  <span>
-                    <b>Próx. Calibración:</b> {new Date(new Date(a.ultima_calibracion).setMonth(new Date(a.ultima_calibracion).getMonth() + (a.frecuencia_calibracion_meses || 6))).toLocaleDateString()}
-                  </span>
-                ) : 'Calibración: No configurada'}
+              <div style={{
+                marginTop: '10px',
+                fontSize: '11px',
+                padding: '6px 8px',
+                borderRadius: '6px',
+                background: a.ultima_calibracion ? (calib.isDueSoon ? 'rgba(255, 159, 10, 0.15)' : 'rgba(40, 205, 65, 0.1)') : 'var(--line)',
+                color: 'var(--ink)'
+              }}>
+                <b>{calib.label}</b>
               </div>
 
-              {isAdminOrSuper && (
+              {(userRol === 'admin' || (userRol === 'supervisor' && (!user?.area_id || user.area_id === a.id))) && (
                 <div style={{ marginTop: '12px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                  <button className="btn sec sm" onClick={e => { e.preventDefault(); openEdit(a) }}><Edit size={14} /> Editar</button>
-                  <button className="btn red sm" onClick={e => { e.preventDefault(); handleDelete(a.id) }}><Trash2 size={14} /> Eliminar</button>
+                  <button className="btn sec sm" onClick={e => { e.preventDefault(); openEdit(a) }}>
+                    <Edit size={14} /> Editar parámetros
+                  </button>
+                  {userRol === 'admin' && (
+                    <button className="btn red sm" onClick={e => { e.preventDefault(); handleDelete(a.id) }}>
+                      <Trash2 size={14} /> Eliminar
+                    </button>
+                  )}
                 </div>
               )}
             </NavLink>

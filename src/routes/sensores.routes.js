@@ -96,7 +96,14 @@ router.get('/lecturas', authMiddleware, [...validatePagination, ...validateDateR
     const params = [];
     let paramIdx = 1;
 
-    if (area_id) { where += ` AND l.area_id = $${paramIdx++}`; params.push(area_id); }
+    // Si no es admin y tiene área asignada, filtrar automáticamente solo por su área
+    if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id) {
+      where += ` AND l.area_id = $${paramIdx++}`;
+      params.push(req.user.area_id);
+    } else if (area_id) {
+      where += ` AND l.area_id = $${paramIdx++}`;
+      params.push(area_id);
+    }
     if (sensor_id) { where += ` AND l.sensor_id = $${paramIdx++}`; params.push(sensor_id); }
     if (fecha_desde) { where += ` AND l.fecha_hora >= $${paramIdx++}`; params.push(fecha_desde); }
     if (fecha_hasta) { where += ` AND l.fecha_hora <= $${paramIdx++}`; params.push(fecha_hasta); }
