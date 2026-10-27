@@ -56,6 +56,14 @@ function getLogoAttachment() {
 }
 
 export async function sendAlertEmail({ areaNombre, tipoAlerta, severidad, mensaje, valorActual, valorMin, valorMax, sensorId, fecha, destinatarios }) {
+  try {
+    const cfgRes = await query("SELECT valor FROM configuracion_sistema WHERE clave = 'email_alertas_activo' LIMIT 1");
+    if (cfgRes.rows.length > 0 && String(cfgRes.rows[0].valor).trim().toLowerCase() === 'false') {
+      console.log('🔕 Envío de correo omitido: email_alertas_activo está en false');
+      return { success: false, disabled: true, error: 'Envío de correos desactivado temporalmente' };
+    }
+  } catch { /* continue if table check fails */ }
+
   const transporter = getTransporter();
 
   const colorMap = {

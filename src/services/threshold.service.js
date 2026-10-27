@@ -239,6 +239,7 @@ async function checkThresholds(io) {
         SELECT temperatura, humedad, presion, fecha_hora
         FROM lecturas_sensores
         WHERE area_id = a.id
+          AND fecha_hora > NOW() - INTERVAL '5 minutes'
         ORDER BY fecha_hora DESC
         LIMIT 1
       ) l ON true
