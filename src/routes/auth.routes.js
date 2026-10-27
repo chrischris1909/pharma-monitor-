@@ -212,14 +212,23 @@ router.post('/register',
         [nombre, correo, passwordHash, rolNormalizado, targetAreaId]
       );
 
+      const newUserId = result.rows[0].id;
+      const fullUser = await query(
+        `SELECT u.id, u.nombre, u.correo_institucional, u.rol, u.activo, u.area_id, a.nombre as area_nombre, u.created_at
+         FROM usuarios u
+         LEFT JOIN areas_laboratorio a ON a.id = u.area_id
+         WHERE u.id = $1`,
+        [newUserId]
+      );
+
       // Registrar en auditoría
       await query(
         `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_nuevos, justificacion)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [req.user.nombre || req.user.correo_institucional, 'CREATE_USER', 'usuarios', 0, JSON.stringify({ nombre, correo, rol: rolNormalizado, area_id: targetAreaId }), 'Creación de nuevo usuario con área asignada']
+        [req.user.nombre || req.user.correo_institucional, 'CREATE_USER', 'usuarios', String(newUserId), JSON.stringify({ nombre, correo, rol: rolNormalizado, area_id: targetAreaId }), 'Creación de nuevo usuario con área asignada']
       );
 
-      res.status(201).json({ user: result.rows[0] });
+      res.status(201).json({ user: fullUser.rows[0] });
     } catch (error) {
       console.error('Register error:', error);
       res.status(500).json({ error: 'Error creando usuario' });
@@ -246,9 +255,14 @@ router.get('/users', authMiddleware, requireAdmin, async (req, res) => {
 router.patch('/users/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre, rol, activo, area_id } = req.body;
+    const { nombre, correo, password, rol, activo, area_id } = req.body;
     const rolNormalizado = rol ? rol.toLowerCase() : undefined;
     const targetAreaId = rolNormalizado === 'admin' ? null : area_id;
+
+    let newPasswordHash = null;
+    if (password && String(password).trim().length >= 6) {
+      newPasswordHash = await bcrypt.hash(String(password).trim(), 10);
+    }
 
     const result = await query(
       `UPDATE usuarios
@@ -256,10 +270,12 @@ router.patch('/users/:id', authMiddleware, requireAdmin, async (req, res) => {
            rol = COALESCE($2, rol),
            activo = COALESCE($3, activo),
            area_id = CASE WHEN $4::boolean IS TRUE THEN $5::uuid ELSE area_id END,
+           password_hash = COALESCE($6, password_hash),
+           correo_institucional = COALESCE($7, correo_institucional),
            updated_at = NOW()
-       WHERE id = $6
+       WHERE id = $8
        RETURNING id, nombre, correo_institucional, rol, activo, area_id`,
-      [nombre, rolNormalizado, activo, area_id !== undefined, targetAreaId || null, id]
+      [nombre, rolNormalizado, activo, area_id !== undefined, targetAreaId || null, newPasswordHash, correo || null, id]
     );
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -277,11 +293,12 @@ router.patch('/users/:id', authMiddleware, requireAdmin, async (req, res) => {
     await query(
       `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_nuevos, justificacion)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.nombre || req.user.correo_institucional, 'UPDATE_USER', 'usuarios', 0, JSON.stringify(fullUser.rows[0]), 'Actualización de datos, rol o área asignada de usuario']
+      [req.user.nombre || req.user.correo_institucional, 'UPDATE_USER', 'usuarios', String(id), JSON.stringify(fullUser.rows[0]), 'Actualización de datos, rol o área asignada de usuario']
     );
 
     res.json({ user: fullUser.rows[0] });
   } catch (error) {
+    console.error('Error actualizando usuario:', error);
     res.status(500).json({ error: 'Error actualizando usuario' });
   }
 });
@@ -296,13 +313,14 @@ router.delete('/users/:id', authMiddleware, requireAdmin, async (req, res) => {
     const userToDelete = await query('SELECT id, nombre, correo_institucional FROM usuarios WHERE id = $1', [id]);
     if (userToDelete.rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+    await query('DELETE FROM sesiones WHERE usuario_id = $1', [id]);
     await query('DELETE FROM usuarios WHERE id = $1', [id]);
 
     // Registrar en auditoría
     await query(
       `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, justificacion)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.nombre || req.user.correo_institucional, 'DELETE_USER', 'usuarios', 0, JSON.stringify(userToDelete.rows[0]), 'Eliminación de usuario del sistema']
+      [req.user.nombre || req.user.correo_institucional, 'DELETE_USER', 'usuarios', String(id), JSON.stringify(userToDelete.rows[0]), 'Eliminación de usuario del sistema']
     );
 
     res.json({ message: 'Usuario eliminado exitosamente' });

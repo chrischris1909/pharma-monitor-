@@ -3,8 +3,15 @@
 // ============================================
 
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 import { query } from '../db/pool.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const LOGO_PATH = path.resolve(__dirname, '../../frontend/public/logo-siegfried.png');
 
 let transporter = null;
 
@@ -19,7 +26,7 @@ export function getTransporter() {
         pass: config.email.pass,
       },
       tls: {
-        rejectUnauthorized: false, // Para desarrollo con certificados self-signed
+        rejectUnauthorized: false,
       },
     });
 
@@ -35,7 +42,20 @@ export function getTransporter() {
   return transporter;
 }
 
-export async function sendAlertEmail({ areaNombre, tipoAlerta, severidad, mensaje, valorActual, valorMin, valorMax, fecha, destinatarios }) {
+function getLogoAttachment() {
+  try {
+    if (fs.existsSync(LOGO_PATH)) {
+      return [{
+        filename: 'logo-siegfried.png',
+        path: LOGO_PATH,
+        cid: 'siegfried-logo',
+      }];
+    }
+  } catch { /* ignore */ }
+  return [];
+}
+
+export async function sendAlertEmail({ areaNombre, tipoAlerta, severidad, mensaje, valorActual, valorMin, valorMax, sensorId, fecha, destinatarios }) {
   const transporter = getTransporter();
 
   const colorMap = {
@@ -44,9 +64,51 @@ export async function sendAlertEmail({ areaNombre, tipoAlerta, severidad, mensaj
     critica: config.siegfriedColors.rojoCritico,
   };
 
-  const color = colorMap[severidad] || config.siegfriedColors.grisMedio;
-  const iconMap = { info: 'ℹ️', advertencia: '⚠️', critica: '🚨' };
-  const icon = iconMap[severidad] || 'ℹ️';
+  const color = colorMap[severidad] || config.siegfriedColors.rojoCritico;
+  const isWatchdog = String(tipoAlerta || '').toLowerCase().includes('desconexion') || String(tipoAlerta || '').toLowerCase().includes('watchdog');
+  const iconMap = { info: 'ℹ️', advertencia: '⚠️', critica: isWatchdog ? '🔌' : '🚨' };
+  const icon = iconMap[severidad] || '🚨';
+  const attachments = getLogoAttachment();
+  const hasLogo = attachments.length > 0;
+
+  const badgeTitle = isWatchdog
+    ? `${icon} ALERTA TÉCNICA - NODO ARDUINO SIN CONEXIÓN`
+    : `${icon} ALERTA ${String(severidad || 'CRITICA').toUpperCase()} - ${String(tipoAlerta || 'TEMPERATURA').toUpperCase()}`;
+
+  const metricsRows = isWatchdog
+    ? `
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px; border-bottom: 1px solid #eee;">Estado del Nodo ESP32</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 700; color: ${color}; font-size: 15px; border-bottom: 1px solid #eee;">🔌 SIN CONEXIÓN (OFFLINE)</td>
+      </tr>
+      ${sensorId ? `
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px; border-bottom: 1px solid #eee;">Identificador de Hardware</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #333; font-family: monospace; font-size: 14px; border-bottom: 1px solid #eee;">${sensorId}</td>
+      </tr>` : ''}
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px; border-bottom: 1px solid #eee;">Tiempo sin reportar</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 700; color: ${color}; font-size: 15px; border-bottom: 1px solid #eee;">${valorActual ?? '--'} min</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px;">Umbral máximo Watchdog</td>
+        <td style="padding: 10px 0; text-align: right; color: #333; font-weight: 600;">${valorMax ?? 10} min</td>
+      </tr>
+    `
+    : `
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px; border-bottom: 1px solid #eee;">Valor actual registrado</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 700; color: ${color}; font-size: 16px; border-bottom: 1px solid #eee;">${valorActual} ${getUnit(tipoAlerta)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px; border-bottom: 1px solid #eee;">Rango permitido (GMP)</td>
+        <td style="padding: 10px 0; text-align: right; color: #333; font-weight: 600; border-bottom: 1px solid #eee;">${valorMin} - ${valorMax} ${getUnit(tipoAlerta)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 0; color: #666; font-size: 13px;">Desviación</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 700; color: ${color};">${calculateDeviation(valorActual, valorMin, valorMax)}%</td>
+      </tr>
+    `;
 
   const html = `
     <!DOCTYPE html>
@@ -55,57 +117,55 @@ export async function sendAlertEmail({ areaNombre, tipoAlerta, severidad, mensaj
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f5f5f5;">
-      <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, ${config.siegfriedColors.vinotinto} 0%, ${config.siegfriedColors.rojo} 100%); border-radius: 12px 12px 0 0; padding: 30px 20px; text-align: center;">
-          <div style="background: white; border-radius: 50%; width: 60px; height: 60px; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 28px;">🏭</div>
-          <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">Pharma Monitor</h1>
-          <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0; font-size: 14px;">Sistema de Monitoreo Ambiental - Siegfried</p>
+    <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #f3f1f2;">
+      <div style="max-width: 600px; margin: 0 auto; padding: 24px 16px;">
+        <!-- Header Corporativo Siegfried -->
+        <div style="background: linear-gradient(135deg, ${config.siegfriedColors.vinotinto} 0%, ${config.siegfriedColors.rojo} 100%); border-radius: 14px 14px 0 0; padding: 28px 24px; text-align: center;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin: 0 auto 14px;">
+            <tr>
+              <td align="center" valign="middle" style="background-color: #ffffff; border-radius: 10px; padding: 10px 22px; box-shadow: 0 4px 14px rgba(0,0,0,0.22);">
+                ${hasLogo
+                  ? `<img src="cid:siegfried-logo" alt="Laboratorios Siegfried" width="210" style="display: block; max-width: 210px; height: auto; border: 0; margin: 0 auto;" />`
+                  : `<span style="font-size: 18px; font-weight: 800; color: ${config.siegfriedColors.vinotinto}; letter-spacing: 1px;">LABORATORIOS SIEGFRIED</span>`
+                }
+              </td>
+            </tr>
+          </table>
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 0.2px;">Pharma Monitor</h1>
+          <p style="color: rgba(255,255,255,0.92); margin: 6px 0 0; font-size: 14px;">Sistema de Monitoreo Ambiental · Laboratorios Siegfried</p>
         </div>
 
         <!-- Alert Badge -->
-        <div style="background: ${color}; color: white; border-radius: 0 0 12px 12px; padding: 15px 20px; text-align: center; font-weight: 600; font-size: 16px;">
-          ${icon} ALERTA ${severidad.toUpperCase()} - ${tipoAlerta.toUpperCase()}
+        <div style="background: ${color}; color: #ffffff; padding: 14px 20px; text-align: center; font-weight: 700; font-size: 15px; letter-spacing: 0.4px;">
+          ${badgeTitle}
         </div>
 
         <!-- Content -->
-        <div style="background: white; border-radius: 0 0 12px 12px; padding: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.08);">
-          <div style="margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee;">
-            <h2 style="margin: 0 0 10px; color: ${config.siegfriedColors.vinotinto}; font-size: 20px;">${areaNombre}</h2>
-            <p style="margin: 0; color: #666; font-size: 14px;">${new Date(fecha).toLocaleString('es-ES', { timeZone: 'America/Bogota' })}</p>
+        <div style="background: #ffffff; border-radius: 0 0 14px 14px; padding: 30px; box-shadow: 0 6px 24px rgba(0,0,0,0.08);">
+          <div style="margin-bottom: 22px; padding-bottom: 18px; border-bottom: 1px solid #eee;">
+            <h2 style="margin: 0 0 8px; color: ${config.siegfriedColors.vinotinto}; font-size: 21px;">${areaNombre}</h2>
+            <p style="margin: 0; color: #666; font-size: 13.5px;">${new Date(fecha || Date.now()).toLocaleString('es-ES', { timeZone: 'America/Caracas' })}</p>
           </div>
 
-          <div style="background: #fafafa; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
-            <p style="margin: 0 0 15px; color: #333; line-height: 1.6;">${mensaje}</p>
+          <div style="background: #faf8f9; border: 1px solid #f0e8ea; border-radius: 10px; padding: 20px; margin-bottom: 26px;">
+            <p style="margin: 0 0 16px; color: #2b2628; line-height: 1.6; font-size: 14.5px;">${mensaje}</p>
 
             <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 8px 0; color: #666; font-size: 13px;">Valor actual</td>
-                <td style="padding: 8px 0; text-align: right; font-weight: 600; color: ${color}; font-size: 16px;">${valorActual} ${getUnit(tipoAlerta)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px 0; color: #666; font-size: 13px;">Rango permitido</td>
-                <td style="padding: 8px 0; text-align: right; color: #333;">${valorMin} - ${valorMax} ${getUnit(tipoAlerta)}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px 0; color: #666; font-size: 13px;">Desviación</td>
-                <td style="padding: 8px 0; text-align: right; font-weight: 600; color: ${color};">${calculateDeviation(valorActual, valorMin, valorMax)}%</td>
-              </tr>
+              ${metricsRows}
             </table>
           </div>
 
           <div style="text-align: center;">
-            <a href="${config.clientUrl}/alertas" style="display: inline-block; background: linear-gradient(135deg, ${config.siegfriedColors.vinotinto} 0%, ${config.siegfriedColors.rojo} 100%); color: white; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
-              Ver en Dashboard →
+            <a href="${config.clientUrl}/alerts" style="display: inline-block; background: linear-gradient(135deg, ${config.siegfriedColors.vinotinto} 0%, ${config.siegfriedColors.rojo} 100%); color: #ffffff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+              Abrir Panel de Control →
             </a>
           </div>
         </div>
 
         <!-- Footer -->
-        <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
-          <p style="margin: 0;">Sistema Pharma Monitor - Siegfried</p>
-          <p style="margin: 5px 0 0;">Este es un correo automático, no responda a este mensaje.</p>
+        <div style="text-align: center; padding: 20px; color: #888; font-size: 12px;">
+          <p style="margin: 0; font-weight: 600;">Sistema Pharma Monitor · Laboratorios Siegfried</p>
+          <p style="margin: 5px 0 0;">Notificación automática generada por el sistema de control ambiental y telemetría ESP32.</p>
         </div>
       </div>
     </body>
@@ -113,25 +173,31 @@ export async function sendAlertEmail({ areaNombre, tipoAlerta, severidad, mensaj
   `;
 
   const text = `
-ALERTA ${severidad.toUpperCase()} - ${tipoAlerta.toUpperCase()}
+${badgeTitle}
 Área: ${areaNombre}
-Fecha: ${new Date(fecha).toLocaleString('es-ES')}
+Fecha: ${new Date(fecha || Date.now()).toLocaleString('es-ES')}
 Mensaje: ${mensaje}
-Valor actual: ${valorActual} ${getUnit(tipoAlerta)}
-Rango permitido: ${valorMin} - ${valorMax} ${getUnit(tipoAlerta)}
+${isWatchdog ? `Tiempo sin conexión: ${valorActual} min (Límite: ${valorMax} min)` : `Valor actual: ${valorActual} ${getUnit(tipoAlerta)} (Rango: ${valorMin ?? 0} - ${valorMax ?? 0} ${getUnit(tipoAlerta)})`}
 
-Ver en dashboard: ${config.clientUrl}/alertas
+Ver en dashboard: ${config.clientUrl}/alerts
 
 ---
-Sistema Pharma Monitor - Siegfried
+Sistema Pharma Monitor - Laboratorios Siegfried
   `.trim();
+
+  const cleanDestinatarios = (Array.isArray(destinatarios) ? destinatarios : [])
+    .map(e => String(e || '').trim().toLowerCase())
+    .filter(e => e && !EXCLUDED_RECIPIENTS.has(e));
 
   const mailOptions = {
     from: config.email.from,
-    to: destinatarios.join(', '),
-    subject: `[Pharma Monitor] ${icon} ${severidad.toUpperCase()}: ${tipoAlerta} en ${areaNombre}`,
+    to: cleanDestinatarios.join(', '),
+    subject: isWatchdog
+      ? `[Pharma Monitor] 🔌 SIN CONEXIÓN: Nodo Arduino en ${areaNombre}`
+      : `[Pharma Monitor] ${icon} ${String(severidad || 'CRITICA').toUpperCase()}: ${tipoAlerta} en ${areaNombre}`,
     text,
     html,
+    attachments,
   };
 
   try {
@@ -158,7 +224,7 @@ export async function sendDailyReportEmail({ destinatarios, resumen, fecha }) {
           <p style="margin: 10px 0 0; opacity: 0.9;">${new Date(fecha).toLocaleDateString('es-ES', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
         <div style="padding: 30px;">
-          ${resumen.map((area, i) => `
+          ${resumen.map((area) => `
             <div style="border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 15px;">
               <h3 style="margin: 0 0 15px; color: ${config.siegfriedColors.vinotinto};">${area.nombre}</h3>
               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
@@ -179,7 +245,7 @@ export async function sendDailyReportEmail({ destinatarios, resumen, fecha }) {
             </div>
           `).join('')}
           <div style="text-align: center; margin-top: 30px;">
-            <a href="${config.clientUrl}/reportes" style="background: linear-gradient(135deg, ${config.siegfriedColors.vinotinto} 0%, ${config.siegfriedColors.rojo} 100%); color: white; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            <a href="${config.clientUrl}/analytics" style="background: linear-gradient(135deg, ${config.siegfriedColors.vinotinto} 0%, ${config.siegfriedColors.rojo} 100%); color: white; padding: 14px 30px; border-radius: 8px; text-decoration: none; font-weight: 600;">
               Ver Dashboard Completo →
             </a>
           </div>
@@ -205,47 +271,66 @@ export async function sendDailyReportEmail({ destinatarios, resumen, fecha }) {
 }
 
 function getUnit(tipo) {
-  const units = { temperatura: '°C', humedad: '%', presion: 'Pa' };
-  return units[tipo] || '';
+  const t = String(tipo || '').toLowerCase();
+  if (t.includes('temp') || t.includes('emergencia') || t.includes('simul')) return '°C';
+  if (t.includes('hum')) return '%';
+  if (t.includes('pres')) return 'Pa';
+  return '';
 }
 
 function calculateDeviation(actual, min, max) {
-  const range = max - min;
-  const center = (min + max) / 2;
-  const deviation = Math.abs(actual - center) / (range / 2) * 100;
+  const a = Number(actual) || 0;
+  const mn = Number(min) || 0;
+  const mx = Number(max) || 0;
+  const range = mx - mn;
+  if (range <= 0) return 100;
+  const center = (mn + mx) / 2;
+  const deviation = (Math.abs(a - center) / (range / 2)) * 100;
   return Math.round(deviation);
 }
 
+const EXCLUDED_RECIPIENTS = new Set([
+  'admin@siegfried.com',
+  'noreply@siegfried.com',
+]);
+
 export async function getRecipientsForArea(areaId) {
   const recipients = new Set();
+
+  const addEmail = (raw) => {
+    if (!raw) return;
+    const clean = String(raw).trim().toLowerCase();
+    if (clean && !EXCLUDED_RECIPIENTS.has(clean)) {
+      recipients.add(clean);
+    }
+  };
 
   try {
     // 1. Gerente General / Admin: recibe TODAS las alertas de TODAS las áreas
     const admins = await query(
       "SELECT correo_institucional FROM usuarios WHERE LOWER(rol) = 'admin' AND (activo = true OR activo IS NULL)"
     );
-    admins.rows.forEach(r => {
-      if (r.correo_institucional) recipients.add(r.correo_institucional.trim().toLowerCase());
-    });
+    admins.rows.forEach(r => addEmail(r.correo_institucional));
 
-    // 2. Encargados de área (Supervisor): solo reciben la alerta de SU área asignada
+    // 2. Personal asignado a esta área (Supervisor / Encargado u Operador del área)
     if (areaId) {
-      const supervisors = await query(
-        "SELECT correo_institucional FROM usuarios WHERE LOWER(rol) = 'supervisor' AND area_id = $1 AND (activo = true OR activo IS NULL)",
+      const areaUsers = await query(
+        "SELECT correo_institucional FROM usuarios WHERE area_id = $1 AND (activo = true OR activo IS NULL)",
         [areaId]
       );
-      supervisors.rows.forEach(r => {
-        if (r.correo_institucional) recipients.add(r.correo_institucional.trim().toLowerCase());
-      });
+      areaUsers.rows.forEach(r => addEmail(r.correo_institucional));
 
-      // 3. Correos institucionales registrados específicamente para esta área o de alcance global
+      // 3. Correos institucionales registrados específicamente para esta área o de alcance global (Gerente General)
       const instEmails = await query(
         "SELECT correo FROM correos_institucionales WHERE (activo = true OR activo IS NULL) AND (area_id = $1 OR area_id IS NULL OR LOWER(cargo) LIKE '%gerente%')",
         [areaId]
       );
-      instEmails.rows.forEach(r => {
-        if (r.correo) recipients.add(r.correo.trim().toLowerCase());
-      });
+      instEmails.rows.forEach(r => addEmail(r.correo));
+    } else {
+      const globalEmails = await query(
+        "SELECT correo FROM correos_institucionales WHERE (activo = true OR activo IS NULL) AND (area_id IS NULL OR LOWER(cargo) LIKE '%gerente%')"
+      );
+      globalEmails.rows.forEach(r => addEmail(r.correo));
     }
   } catch (err) {
     console.error('Error obteniendo destinatarios segmentados por área:', err);
@@ -254,12 +339,9 @@ export async function getRecipientsForArea(areaId) {
   // 4. Si la lista está vacía, usar configuración de respaldo
   if (recipients.size === 0) {
     if (process.env.ALERT_EMAILS) {
-      process.env.ALERT_EMAILS.split(',').forEach(e => {
-        const clean = e.trim().toLowerCase();
-        if (clean) recipients.add(clean);
-      });
+      process.env.ALERT_EMAILS.split(',').forEach(e => addEmail(e));
     } else if (process.env.EMAIL_USER) {
-      recipients.add(process.env.EMAIL_USER.trim().toLowerCase());
+      addEmail(process.env.EMAIL_USER);
     }
   }
 

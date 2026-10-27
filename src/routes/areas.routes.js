@@ -13,6 +13,63 @@ const router = express.Router();
 // ÁREAS
 // ============================================
 
+const AREA_STATE_SQL = `
+  SELECT a.id,
+         a.id as area_id,
+         a.nombre,
+         a.descripcion,
+         a.tipo_area,
+         a.imagen_url,
+         a.sensor_id,
+         a.activa,
+         a.ultima_calibracion,
+         a.frecuencia_calibracion_meses,
+         COALESCE(ps.temp_min, 18) as temp_min,
+         COALESCE(ps.temp_max, 25) as temp_max,
+         COALESCE(ps.humedad_min, 0) as humedad_min,
+         COALESCE(ps.humedad_max, 65) as humedad_max,
+         COALESCE(ps.presion_min, 10) as presion_min,
+         COALESCE(ps.presion_max, 15) as presion_max,
+         ps.temp_critica_min,
+         ps.temp_critica_max,
+         ps.humedad_critica_min,
+         ps.humedad_critica_max,
+         ps.presion_critica_min,
+         ps.presion_critica_max,
+         l.temperatura,
+         l.humedad,
+         l.presion,
+         COALESCE(l.bateria_nivel, 100) as bateria_nivel,
+         COALESCE(l.senal_calidad, 96) as senal_calidad,
+         COALESCE(l.firmware_version, 'v2.4.0-ESP32') as firmware_version,
+         l.fecha_hora as ultima_lectura,
+         ROUND(CAST(EXTRACT(EPOCH FROM (NOW() - l.fecha_hora)) / 60.0 AS numeric), 1) as minutos_sin_reporte,
+         EXISTS(
+           SELECT 1 FROM alertas_historial ah
+           WHERE ah.area_id = a.id AND ah.tipo_alerta = 'desconexion_nodo' AND ah.resuelta = false
+         ) as nodo_desconectado,
+         CASE
+           WHEN EXISTS(
+             SELECT 1 FROM alertas_historial ah
+             WHERE ah.area_id = a.id AND ah.tipo_alerta = 'desconexion_nodo' AND ah.resuelta = false
+           ) THEN 'offline'
+           WHEN l.temperatura IS NULL THEN 'sin_datos'
+           WHEN l.temperatura < COALESCE(ps.temp_min, 18) OR l.temperatura > COALESCE(ps.temp_max, 25) THEN 'bad'
+           WHEN l.humedad > COALESCE(ps.humedad_max, 65) OR l.humedad < COALESCE(ps.humedad_min, 0) THEN 'bad'
+           WHEN l.presion < COALESCE(ps.presion_min, 10) OR l.presion > COALESCE(ps.presion_max, 15) THEN 'bad'
+           ELSE 'ok'
+         END as estado
+  FROM areas_laboratorio a
+  LEFT JOIN parametros_seguridad ps ON ps.area_id = a.id
+  LEFT JOIN LATERAL (
+    SELECT temperatura, humedad, presion, bateria_nivel, senal_calidad, firmware_version, fecha_hora
+    FROM lecturas_sensores
+    WHERE area_id = a.id
+    ORDER BY fecha_hora DESC
+    LIMIT 1
+  ) l ON true
+`;
+
 // GET /api/areas - Listar todas (o filtradas por área asignada si no es admin)
 router.get('/', authMiddleware, async (req, res) => {
   try {
@@ -23,31 +80,7 @@ router.get('/', authMiddleware, async (req, res) => {
       params.push(req.user.area_id);
     }
 
-    const result = await query(`
-      SELECT a.*,
-             COALESCE(ps.temp_min, 18) as temp_min,
-             COALESCE(ps.temp_max, 25) as temp_max,
-             COALESCE(ps.humedad_min, 0) as humedad_min,
-             COALESCE(ps.humedad_max, 65) as humedad_max,
-             COALESCE(ps.presion_min, 10) as presion_min,
-             COALESCE(ps.presion_max, 15) as presion_max,
-             l.temperatura,
-             l.humedad,
-             l.presion,
-             l.fecha_hora as ultima_lectura,
-             CASE
-               WHEN l.temperatura IS NULL THEN 'sin_datos'
-               WHEN l.temperatura < ps.temp_min OR l.temperatura > ps.temp_max THEN 'bad'
-               WHEN l.humedad > ps.humedad_max THEN 'bad'
-               WHEN l.presion < ps.presion_min OR l.presion > ps.presion_max THEN 'bad'
-               ELSE 'ok'
-             END as estado
-      FROM areas_laboratorio a
-      LEFT JOIN parametros_seguridad ps ON ps.area_id = a.id
-      LEFT JOIN v_ultima_lectura_area l ON l.area_id = a.id
-      ${whereClause}
-      ORDER BY a.nombre
-    `, params);
+    const result = await query(`${AREA_STATE_SQL} ${whereClause} ORDER BY a.nombre`, params);
     res.json({ areas: result.rows });
   } catch (error) {
     console.error('Error areas:', error);
@@ -55,16 +88,16 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/areas/estado - Estado actual para dashboard (filtrado por área si no es admin)
+// GET /api/areas/estado - Estado actual para dashboard y Modo TV (filtrado por área si no es admin)
 router.get('/estado', authMiddleware, async (req, res) => {
   try {
-    let queryStr = 'SELECT * FROM v_estado_areas';
+    let whereClause = 'WHERE a.activa = true';
     const params = [];
     if (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id) {
-      queryStr += ' WHERE area_id = $1';
+      whereClause += ' AND a.id = $1';
       params.push(req.user.area_id);
     }
-    const result = await query(queryStr, params);
+    const result = await query(`${AREA_STATE_SQL} ${whereClause} ORDER BY a.nombre`, params);
     res.json({ areas: result.rows });
   } catch (error) {
     console.error('Error obteniendo estado de áreas:', error);
@@ -80,23 +113,7 @@ router.get('/:id', authMiddleware, validateId, handleValidationErrors, async (re
       return res.status(403).json({ error: 'No tienes permiso para acceder a esta área' });
     }
 
-    const result = await query(`
-      SELECT a.*, ps.*,
-             COALESCE(ps.temp_min, 18) as temp_min,
-             COALESCE(ps.temp_max, 25) as temp_max,
-             COALESCE(ps.humedad_min, 0) as humedad_min,
-             COALESCE(ps.humedad_max, 65) as humedad_max,
-             COALESCE(ps.presion_min, 10) as presion_min,
-             COALESCE(ps.presion_max, 15) as presion_max,
-             l.temperatura,
-             l.humedad,
-             l.presion,
-             l.fecha_hora as ultima_lectura
-      FROM areas_laboratorio a
-      LEFT JOIN parametros_seguridad ps ON ps.area_id = a.id
-      LEFT JOIN v_ultima_lectura_area l ON l.area_id = a.id
-      WHERE a.id = $1
-    `, [req.params.id]);
+    const result = await query(`${AREA_STATE_SQL} WHERE a.id = $1`, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Área no encontrada' });
     res.json({ area: result.rows[0] });
   } catch (error) {
@@ -107,20 +124,25 @@ router.get('/:id', authMiddleware, validateId, handleValidationErrors, async (re
 // POST /api/areas (supervisor+)
 router.post('/', authMiddleware, requireSupervisor, validateArea, handleValidationErrors, async (req, res) => {
   try {
-    const { nombre, descripcion, tipo_area, imagen_url, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
+    const { nombre, descripcion, tipo_area, imagen_url, sensor_id, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
+    const defaultSensorId = sensor_id || `ARD-${nombre.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, '-')}-01`;
     const result = await query(
-      `INSERT INTO areas_laboratorio (nombre, descripcion, tipo_area, imagen_url, ultima_calibracion, frecuencia_calibracion_meses)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [nombre, descripcion, tipo_area, imagen_url, ultima_calibracion || null, frecuencia_calibracion_meses || 6]
+      `INSERT INTO areas_laboratorio (nombre, descripcion, tipo_area, imagen_url, sensor_id, ultima_calibracion, frecuencia_calibracion_meses)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [nombre, descripcion || '', tipo_area, imagen_url || '/images/areas/mezcla-solidos.jpg', defaultSensorId, ultima_calibracion || null, frecuencia_calibracion_meses || 6]
     );
+    const newArea = result.rows[0];
+
     // Crear parámetros por defecto
     await query(
       `INSERT INTO parametros_seguridad (area_id) VALUES ($1) ON CONFLICT DO NOTHING`,
-      [result.rows[0].id]
+      [newArea.id]
     );
-    res.status(201).json({ area: result.rows[0] });
+
+    res.status(201).json({ area: newArea });
   } catch (error) {
     if (error.code === '23505') return res.status(400).json({ error: 'El nombre del área ya existe' });
+    console.error('Error creando área:', error);
     res.status(500).json({ error: 'Error creando área' });
   }
 });
@@ -133,21 +155,24 @@ router.patch('/:id', authMiddleware, requireSupervisor, validateId, handleValida
       return res.status(403).json({ error: 'Solo tienes permisos para modificar tu área asignada' });
     }
 
-    const { nombre, descripcion, tipo_area, imagen_url, activa, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
+    const { nombre, descripcion, tipo_area, imagen_url, sensor_id, activa, ultima_calibracion, frecuencia_calibracion_meses } = req.body;
     
     // Obtener valores anteriores
     const prev = await query('SELECT * FROM areas_laboratorio WHERE id = $1', [req.params.id]);
     
     const result = await query(
       `UPDATE areas_laboratorio
-       SET nombre = COALESCE($1, nombre), descripcion = COALESCE($2, descripcion),
-           tipo_area = COALESCE($3, tipo_area), imagen_url = COALESCE($4, imagen_url),
+       SET nombre = COALESCE($1, nombre),
+           descripcion = COALESCE($2, descripcion),
+           tipo_area = COALESCE($3, tipo_area),
+           imagen_url = COALESCE($4, imagen_url),
            activa = COALESCE($5, activa), 
            ultima_calibracion = COALESCE($6, ultima_calibracion), 
-           frecuencia_calibracion_meses = COALESCE($7, frecuencia_calibracion_meses), 
+           frecuencia_calibracion_meses = COALESCE($7, frecuencia_calibracion_meses),
+           sensor_id = COALESCE($8, sensor_id),
            updated_at = NOW()
-       WHERE id = $8 RETURNING *`,
-      [nombre, descripcion, tipo_area, imagen_url, activa, ultima_calibracion || null, frecuencia_calibracion_meses || null, req.params.id]
+       WHERE id = $9 RETURNING *`,
+      [nombre, descripcion, tipo_area, imagen_url, activa, ultima_calibracion || null, frecuencia_calibracion_meses || null, sensor_id || null, req.params.id]
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Área no encontrada' });
 
@@ -156,7 +181,7 @@ router.patch('/:id', authMiddleware, requireSupervisor, validateId, handleValida
       await query(
         `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, valores_nuevos, justificacion)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [req.user.nombre || req.user.email, 'UPDATE_AREA', 'areas_laboratorio', req.params.id, JSON.stringify(prev.rows[0]), JSON.stringify(result.rows[0]), 'Actualización general de área']
+        [req.user.nombre || req.user.correo_institucional || 'Usuario', 'UPDATE_AREA', 'areas_laboratorio', String(req.params.id), JSON.stringify(prev.rows[0]), JSON.stringify(result.rows[0]), 'Actualización general de área']
       );
     }
 
@@ -222,9 +247,9 @@ router.put('/:id/parametros', authMiddleware, requireSupervisor, validateId, val
          notificar_email = EXCLUDED.notificar_email, notificar_sistema = EXCLUDED.notificar_sistema,
          updated_at = NOW()
        RETURNING *`,
-      [req.params.id, p.temp_min, p.temp_max, p.humedad_min, p.humedad_max, p.presion_min, p.presion_max,
-        p.temp_critica_min, p.temp_critica_max, p.humedad_critica_min, p.humedad_critica_max,
-        p.presion_critica_min, p.presion_critica_max, p.notificar_email ?? true, p.notificar_sistema ?? true]
+      [req.params.id, p.temp_min, p.temp_max, p.humedad_min ?? 0, p.humedad_max, p.presion_min, p.presion_max,
+        p.temp_critica_min ?? null, p.temp_critica_max ?? null, p.humedad_critica_min ?? null, p.humedad_critica_max ?? null,
+        p.presion_critica_min ?? null, p.presion_critica_max ?? null, p.notificar_email ?? true, p.notificar_sistema ?? true]
     );
 
     // Registrar en auditoría si hubo cambio
@@ -232,12 +257,13 @@ router.put('/:id/parametros', authMiddleware, requireSupervisor, validateId, val
       await query(
         `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, valores_nuevos, justificacion)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [req.user.nombre || req.user.email, 'UPDATE_PARAMETROS', 'parametros_seguridad', req.params.id, JSON.stringify(prev.rows[0]), JSON.stringify(result.rows[0]), 'Actualización de parámetros de seguridad (CFR 21 Part 11)']
+        [req.user.nombre || req.user.correo_institucional || 'Usuario', 'UPDATE_PARAMETROS', 'parametros_seguridad', String(req.params.id), JSON.stringify(prev.rows[0]), JSON.stringify(result.rows[0]), 'Actualización de parámetros de seguridad (CFR 21 Part 11)']
       );
     }
 
     res.json({ parametros: result.rows[0] });
   } catch (error) {
+    console.error('Error guardando parámetros:', error);
     res.status(500).json({ error: 'Error guardando parámetros' });
   }
 });

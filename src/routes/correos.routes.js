@@ -45,14 +45,22 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
       [correo, nombre_completo, cargo || 'Operador', departamento || 'Producción', rol_sistema || 'operador', area_id || null]
     );
 
+    const fullRow = await query(
+      `SELECT c.id, c.correo, c.nombre_completo, c.cargo, c.departamento, c.rol_sistema, c.activo, c.area_id, a.nombre as area_nombre, c.created_at
+       FROM correos_institucionales c
+       LEFT JOIN areas_laboratorio a ON a.id = c.area_id
+       WHERE c.id = $1`,
+      [result.rows[0].id]
+    );
+
     // Auditoría
     await query(
       `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_nuevos, justificacion)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.nombre || req.user.correo_institucional, 'CREATE_INSTITUTIONAL_EMAIL', 'correos_institucionales', result.rows[0].id || 0, JSON.stringify(result.rows[0]), 'Registro de correo institucional con área']
+      [req.user.nombre || req.user.correo_institucional, 'CREATE_INSTITUTIONAL_EMAIL', 'correos_institucionales', String(result.rows[0].id), JSON.stringify(fullRow.rows[0]), 'Registro de correo institucional con área']
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(fullRow.rows[0]);
   } catch (error) {
     console.error('Error creando correo institucional:', error);
     res.status(500).json({ error: 'Error guardando correo institucional' });
@@ -63,24 +71,33 @@ router.post('/', authMiddleware, requireAdmin, async (req, res) => {
 router.patch('/:id', authMiddleware, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const { nombre_completo, cargo, departamento, area_id } = req.body;
+    const { correo, nombre_completo, cargo, departamento, area_id } = req.body;
 
     const result = await query(
       `UPDATE correos_institucionales
        SET nombre_completo = COALESCE($1, nombre_completo),
            cargo = COALESCE($2, cargo),
            departamento = COALESCE($3, departamento),
-           area_id = CASE WHEN $4::boolean IS TRUE THEN $5::uuid ELSE area_id END
-       WHERE id = $6
+           area_id = CASE WHEN $4::boolean IS TRUE THEN $5::uuid ELSE area_id END,
+           correo = COALESCE($6, correo)
+       WHERE id = $7
        RETURNING *`,
-      [nombre_completo, cargo, departamento, area_id !== undefined, area_id || null, id]
+      [nombre_completo, cargo, departamento, area_id !== undefined, area_id || null, correo || null, id]
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Correo institucional no encontrado' });
     }
 
-    res.json(result.rows[0]);
+    const fullRow = await query(
+      `SELECT c.id, c.correo, c.nombre_completo, c.cargo, c.departamento, c.rol_sistema, c.activo, c.area_id, a.nombre as area_nombre, c.created_at
+       FROM correos_institucionales c
+       LEFT JOIN areas_laboratorio a ON a.id = c.area_id
+       WHERE c.id = $1`,
+      [id]
+    );
+
+    res.json(fullRow.rows[0]);
   } catch (error) {
     console.error('Error actualizando correo institucional:', error);
     res.status(500).json({ error: 'Error actualizando correo institucional' });
@@ -100,7 +117,7 @@ router.delete('/:id', authMiddleware, requireAdmin, async (req, res) => {
     await query(
       `INSERT INTO auditoria (usuario_nombre, accion, entidad, entidad_id, valores_anteriores, justificacion)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.nombre || req.user.correo_institucional, 'DELETE_INSTITUTIONAL_EMAIL', 'correos_institucionales', id, JSON.stringify(result.rows[0]), 'Eliminación de correo institucional']
+      [req.user.nombre || req.user.correo_institucional, 'DELETE_INSTITUTIONAL_EMAIL', 'correos_institucionales', String(id), JSON.stringify(result.rows[0]), 'Eliminación de correo institucional']
     );
 
     res.json({ message: 'Correo institucional eliminado' });

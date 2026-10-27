@@ -93,8 +93,10 @@ router.get('/pendientes', authMiddleware, async (req, res) => {
 // GET /api/alertas/configuracion_sistema
 router.get('/configuracion_sistema', authMiddleware, async (req, res) => {
   try {
+    const dbRes = await query("SELECT valor FROM configuracion_sistema WHERE clave = 'alert_email' LIMIT 1").catch(() => ({ rows: [] }));
+    const saved = dbRes.rows[0]?.valor || process.env.ALERT_EMAILS || process.env.EMAIL_USER || '';
     res.json([
-      { clave: 'alert_email', valor: process.env.ALERT_EMAILS || '' }
+      { clave: 'alert_email', valor: saved }
     ]);
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo configuración' });
@@ -105,8 +107,14 @@ router.get('/configuracion_sistema', authMiddleware, async (req, res) => {
 router.post('/configuracion_sistema', authMiddleware, requireSupervisor, async (req, res) => {
   try {
     const { valor } = req.body;
-    process.env.ALERT_EMAILS = valor;
-    res.json({ success: true, message: 'Correo actualizado correctamente' });
+    process.env.ALERT_EMAILS = valor || '';
+    await query(
+      `INSERT INTO configuracion_sistema (clave, valor, descripcion)
+       VALUES ('alert_email', $1, 'Correo de respaldo para notificaciones')
+       ON CONFLICT (clave) DO UPDATE SET valor = EXCLUDED.valor, updated_at = NOW()`,
+      [valor || '']
+    ).catch(() => {});
+    res.json({ success: true, message: 'Correo actualizado correctamente', valor });
   } catch (error) {
     res.status(500).json({ error: 'Error guardando configuración' });
   }
@@ -139,7 +147,7 @@ router.patch('/:id/resolver', authMiddleware, validateId, validateAlertaResolve,
       SET resuelta = true, resuelta_por = $1, resuelta_at = NOW(), notas_resolucion = $2
       WHERE id = $3
       RETURNING *
-    `, [req.user.id, notas_resolucion, req.params.id]);
+    `, [req.user.id, notas_resolucion || 'Resuelta desde el panel', req.params.id]);
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Alerta no encontrada' });
 
@@ -177,19 +185,22 @@ router.post('/:id/reenviar-email', authMiddleware, requireSupervisor, validateId
       severidad: alerta.severidad,
       mensaje: alerta.mensaje,
       valorActual: alerta.valor_actual,
-      valorMin: alerta.valor_esperado_min,
-      valorMax: alerta.valor_esperado_max,
+      valorMin: alerta.valor_esperado_min ?? 18,
+      valorMax: alerta.valor_esperado_max ?? 25,
       fecha: alerta.created_at,
       destinatarios,
     });
 
     if (emailResult.success) {
-      await query('UPDATE alertas_historial SET email_enviado = true, email_enviado_at = NOW(), email_error = NULL WHERE id = $1', [req.params.id]);
+      await query(
+        'UPDATE alertas_historial SET email_enviado = true, email_enviado_at = NOW(), email_destinatarios = $1, email_error = NULL WHERE id = $2',
+        [destinatarios, req.params.id]
+      );
     } else {
       await query('UPDATE alertas_historial SET email_error = $1 WHERE id = $2', [emailResult.error, req.params.id]);
     }
 
-    res.json({ success: emailResult.success, messageId: emailResult.messageId, error: emailResult.error });
+    res.json({ success: emailResult.success, messageId: emailResult.messageId, destinatarios, error: emailResult.error });
   } catch (error) {
     console.error("Error reenviando email:", error);
     res.status(500).json({ error: 'Error reenviando email' });

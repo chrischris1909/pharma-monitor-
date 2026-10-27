@@ -16,9 +16,11 @@ export const config = {
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
     ssl: process.env.DB_SSL === 'true',
-    max: 20, // pool size
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000,
+    max: 12, // pool size optimized for Supabase pooler
+    idleTimeoutMillis: 20000,
+    connectionTimeoutMillis: 20000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
   },
 
   // JWT

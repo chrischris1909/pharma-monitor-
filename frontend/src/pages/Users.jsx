@@ -131,6 +131,8 @@ export default function Users() {
         if (editing) {
           const res = await api.patch(`/auth/users/${editing.id}`, {
             nombre: form.nombre,
+            correo: form.correo,
+            password: form.password || undefined,
             rol: form.rol,
             area_id: form.rol === 'admin' ? null : form.area_id
           })
@@ -154,6 +156,7 @@ export default function Users() {
       } else {
         if (editing) {
           const res = await api.patch(`/correos_institucionales/${editing.id}`, {
+            correo: form.correo,
             nombre_completo: form.nombre,
             cargo: form.cargo,
             area_id: form.cargo === 'admin' ? null : form.area_id

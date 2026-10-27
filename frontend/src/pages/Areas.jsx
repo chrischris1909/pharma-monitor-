@@ -10,7 +10,7 @@ import { api, ws } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 
-const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
+const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular', offline: '🔌 Sin conexión' }
 
 export default function Areas() {
   usePageTitle('Áreas y Variables')
@@ -23,7 +23,7 @@ export default function Areas() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ nombre: '', descripcion: '', tipo_area: 'solidos', imagen_url: '', temp_min: 18, temp_max: 32, humedad_max: 65, presion_min: 10, presion_max: 15 })
+  const [form, setForm] = useState({ nombre: '', descripcion: '', tipo_area: 'solidos', sensor_id: '', imagen_url: '', temp_min: 18, temp_max: 25, humedad_max: 65, presion_min: 10, presion_max: 15 })
 
   const getCalibrationInfo = (ultima, meses) => {
     if (!ultima) return { label: 'Calibración: No configurada', isDueSoon: false }
@@ -68,18 +68,19 @@ export default function Areas() {
       const areaData = { 
         nombre: form.nombre, 
         descripcion: form.descripcion, 
-        tipo_area: form.tipo_area, 
+        tipo_area: form.tipo_area,
+        sensor_id: form.sensor_id || undefined,
         imagen_url: form.imagen_url,
         ultima_calibracion: form.ultima_calibracion,
         frecuencia_calibracion_meses: form.frecuencia_calibracion_meses
       }
       if (editing) {
         await api.patch(`/areas/${editing.id}`, areaData)
-        await api.put(`/areas/${editing.id}/parametros`, { temp_min: form.temp_min, temp_max: form.temp_max, humedad_min: 0, humedad_max: form.humedad_max, presion_min: form.presion_min, presion_max: form.presion_max })
+        await api.put(`/areas/${editing.id}/parametros`, { temp_min: form.temp_min, temp_max: form.temp_max, humedad_min: 30, humedad_max: form.humedad_max, presion_min: form.presion_min, presion_max: form.presion_max })
         toast.success('Área actualizada')
       } else {
         const res = await api.post('/areas', areaData)
-        await api.put(`/areas/${res.data.area.id}/parametros`, { temp_min: form.temp_min, temp_max: form.temp_max, humedad_min: 0, humedad_max: form.humedad_max, presion_min: form.presion_min, presion_max: form.presion_max })
+        await api.put(`/areas/${res.data.area.id}/parametros`, { temp_min: form.temp_min, temp_max: form.temp_max, humedad_min: 30, humedad_max: form.humedad_max, presion_min: form.presion_min, presion_max: form.presion_max })
         toast.success('Área creada')
       }
       closeModal()
@@ -93,13 +94,13 @@ export default function Areas() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ nombre: '', descripcion: '', tipo_area: 'solidos', imagen_url: '', temp_min: 18, temp_max: 32, humedad_max: 65, presion_min: 10, presion_max: 15, ultima_calibracion: new Date().toISOString().split('T')[0], frecuencia_calibracion_meses: 6 })
+    setForm({ nombre: '', descripcion: '', tipo_area: 'solidos', sensor_id: '', imagen_url: '', temp_min: 18, temp_max: 25, humedad_max: 65, presion_min: 10, presion_max: 15, ultima_calibracion: new Date().toISOString().split('T')[0], frecuencia_calibracion_meses: 6 })
     setModalOpen(true)
   }
 
   const openEdit = (a) => {
     setEditing(a)
-    setForm({ nombre: a.nombre, descripcion: a.descripcion || '', tipo_area: a.tipo_area || 'solidos', imagen_url: a.imagen_url || '', temp_min: a.temp_min || 18, temp_max: a.temp_max || 32, humedad_max: a.humedad_max || 65, presion_min: a.presion_min || 10, presion_max: a.presion_max || 15, ultima_calibracion: a.ultima_calibracion || new Date().toISOString().split('T')[0], frecuencia_calibracion_meses: a.frecuencia_calibracion_meses || 6 })
+    setForm({ nombre: a.nombre, descripcion: a.descripcion || '', tipo_area: a.tipo_area || 'solidos', sensor_id: a.sensor_id || '', imagen_url: a.imagen_url || '', temp_min: a.temp_min ?? 18, temp_max: a.temp_max ?? 25, humedad_max: a.humedad_max ?? 65, presion_min: a.presion_min ?? 10, presion_max: a.presion_max ?? 15, ultima_calibracion: a.ultima_calibracion || new Date().toISOString().split('T')[0], frecuencia_calibracion_meses: a.frecuencia_calibracion_meses || 6 })
     setModalOpen(true)
   }
 
@@ -139,6 +140,8 @@ export default function Areas() {
       <div className="grid g3">
         {(areas || []).map(a => {
           const s = a
+          const isOffline = Boolean(s.nodo_desconectado || s.estado === 'offline')
+          const currentEstado = isOffline ? 'offline' : (s.estado || 'ok')
           const calib = getCalibrationInfo(a.ultima_calibracion, a.frecuencia_calibracion_meses)
           return (
             <NavLink to={`/areas/${a.id}`} key={a.id} className="card area" style={{ textDecoration: 'none', color: 'inherit' }}>
@@ -147,15 +150,25 @@ export default function Areas() {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <b>{a.nombre}</b>
-                <span className={`pill ${s.estado === 'ok' ? '' : s.estado || 'sec'}`}>{lab[s.estado] || 'Estable'}</span>
+                <span className={`pill ${currentEstado === 'ok' ? '' : currentEstado === 'offline' ? 'warn' : currentEstado || 'sec'}`}>
+                  {lab[currentEstado] || 'Estable'}
+                </span>
               </div>
               <p className="mut" style={{ margin: '6px 0 10px' }}>{a.descripcion || 'Sin descripción.'}</p>
-              <div style={{ display: 'flex', gap: '16px', fontWeight: 700, fontSize: '14px' }}>
+              <div style={{ display: 'flex', gap: '16px', fontWeight: 700, fontSize: '14px', opacity: isOffline ? 0.55 : 1 }}>
                 <span>{s.temperatura != null ? Number(s.temperatura).toFixed(1) : '--'} °C</span>
                 <span>{s.humedad != null ? Number(s.humedad).toFixed(0) : '--'} %</span>
                 <span>{s.presion != null ? Number(s.presion).toFixed(1) : '--'} Pa</span>
               </div>
-              <div className="mut" style={{ marginTop: '6px' }}>Rango: {a.temp_min}–{a.temp_max} °C · ≤{a.humedad_max} % · {a.presion_min}–{a.presion_max} Pa</div>
+              <div className="mut" style={{ marginTop: '6px' }}>Rango: {a.temp_min ?? 18}–{a.temp_max ?? 25} °C · ≤{a.humedad_max ?? 65} % · {a.presion_min ?? 5}–{a.presion_max ?? 25} Pa</div>
+              {a.sensor_id && (
+                <div className="mut" style={{ marginTop: '5px', fontSize: '11.5px', fontFamily: 'monospace', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>{isOffline ? '🔌' : '📶'} <b>{a.sensor_id}</b></span>
+                  <span style={{ color: isOffline ? 'var(--red)' : '#1f9d55', fontWeight: 700 }}>
+                    {isOffline ? 'Sin conexión' : `Wi-Fi ${a.senal_calidad ?? 96}% · Bat ${a.bateria_nivel ?? 100}%`}
+                  </span>
+                </div>
+              )}
               
               <div style={{
                 marginTop: '10px',
@@ -201,25 +214,33 @@ export default function Areas() {
               <label>Descripción</label>
               <input value={form.descripcion} onChange={e => setForm({...form, descripcion: e.target.value})} placeholder="Descripción breve del área" />
 
-              <label>Tipo de área</label>
-              <select value={form.tipo_area} onChange={e => setForm({...form, tipo_area: e.target.value})}>
-                <option value="liquidos">Líquidos</option>
-                <option value="solidos">Sólidos</option>
-                <option value="semisolidos">Semisólidos</option>
-                <option value="esteriles">Estériles</option>
-                <option value="control_calidad">Control Calidad</option>
-                <option value="almacen">Almacén</option>
-                <option value="otro">Otro</option>
-              </select>
+              <div className="row">
+                <div>
+                  <label>Tipo de área</label>
+                  <select value={form.tipo_area} onChange={e => setForm({...form, tipo_area: e.target.value})}>
+                    <option value="liquidos">Líquidos</option>
+                    <option value="solidos">Sólidos</option>
+                    <option value="semisolidos">Semisólidos</option>
+                    <option value="esteriles">Estériles</option>
+                    <option value="control_calidad">Control Calidad</option>
+                    <option value="almacen">Almacén</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <div>
+                  <label>ID Nodo Arduino (sensor_id)</label>
+                  <input value={form.sensor_id || ''} onChange={e => setForm({...form, sensor_id: e.target.value})} placeholder="Ej: ARD-SOLIDOS-01" />
+                </div>
+              </div>
 
               <div className="row">
-                <div><label>Temp. mín. °C</label><input type="number" value={form.temp_min} onChange={e => setForm({...form, temp_min: +e.target.value})} /></div>
-                <div><label>Temp. máx. °C</label><input type="number" value={form.temp_max} onChange={e => setForm({...form, temp_max: +e.target.value})} /></div>
+                <div><label>Temp. mín. °C</label><input type="number" step="0.1" value={form.temp_min} onChange={e => setForm({...form, temp_min: +e.target.value})} /></div>
+                <div><label>Temp. máx. °C</label><input type="number" step="0.1" value={form.temp_max} onChange={e => setForm({...form, temp_max: +e.target.value})} /></div>
               </div>
               <div className="row">
-                <div><label>Humedad máx. %</label><input type="number" value={form.humedad_max} onChange={e => setForm({...form, humedad_max: +e.target.value})} /></div>
-                <div><label>Presión mín. Pa</label><input type="number" value={form.presion_min} onChange={e => setForm({...form, presion_min: +e.target.value})} /></div>
-                <div><label>Presión máx. Pa</label><input type="number" value={form.presion_max} onChange={e => setForm({...form, presion_max: +e.target.value})} /></div>
+                <div><label>Humedad máx. %</label><input type="number" step="0.1" value={form.humedad_max} onChange={e => setForm({...form, humedad_max: +e.target.value})} /></div>
+                <div><label>Presión mín. Pa</label><input type="number" step="0.1" value={form.presion_min} onChange={e => setForm({...form, presion_min: +e.target.value})} /></div>
+                <div><label>Presión máx. Pa</label><input type="number" step="0.1" value={form.presion_max} onChange={e => setForm({...form, presion_max: +e.target.value})} /></div>
               </div>
               <div className="row">
                 <div><label>Última calibración</label><input type="date" value={form.ultima_calibracion ? form.ultima_calibracion.split('T')[0] : ''} onChange={e => setForm({...form, ultima_calibracion: e.target.value})} /></div>
@@ -227,7 +248,7 @@ export default function Areas() {
               </div>
 
               <label>URL de imagen</label>
-              <input value={form.imagen_url} onChange={e => setForm({...form, imagen_url: e.target.value})} placeholder="https://…" />
+              <input value={form.imagen_url} onChange={e => setForm({...form, imagen_url: e.target.value})} placeholder="https://… o /images/areas/..." />
 
               <div className="row" style={{ marginTop: '16px' }}>
                 <button className="btn" type="submit" style={{ flex: 1 }} disabled={saving}>{saving ? 'Guardando...' : (editing ? 'Guardar cambios' : 'Guardar área')}</button>

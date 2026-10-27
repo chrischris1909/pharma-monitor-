@@ -91,13 +91,15 @@ export default function Values() {
     
     doc.setFontSize(11);
     doc.text(`Fecha de generación: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 30);
-    // Use == instead of === because filters.area_id is a string
     doc.text(`Filtro Área: ${filters.area_id ? areas.find(a => a.id == filters.area_id)?.nombre : 'Todas'}`, 14, 36);
-    doc.text(`Filtro Fecha: ${filters.fecha || 'Todo el histórico'}`, 14, 42);
+    const rangoFecha = (filters.fecha_desde || filters.fecha_hasta)
+      ? `${filters.fecha_desde || 'Inicio'} a ${filters.fecha_hasta || 'Hoy'}`
+      : 'Todo el histórico';
+    doc.text(`Filtro Fecha: ${rangoFecha}`, 14, 42);
 
     const tableData = logs.map(l => [
       l.fecha_hora ? format(new Date(l.fecha_hora), 'dd/MM/yyyy HH:mm') : '--',
-      areas.find(a => a.id == l.area_id)?.nombre || 'N/A',
+      l.area_nombre || areas.find(a => a.id == l.area_id)?.nombre || 'N/A',
       l.temperatura != null ? Number(l.temperatura).toFixed(1) + ' °C' : '--',
       l.humedad != null ? Number(l.humedad).toFixed(0) + ' %' : '--',
       l.presion != null ? Number(l.presion).toFixed(1) + ' Pa' : '--',
@@ -122,28 +124,29 @@ export default function Values() {
 
     return safeAreas.map(a => {
       const aLogs = safeLogs.filter(l => l.area_id === a.id)
-      const last = aLogs[0]
-      const params = { t: [a.temp_min, a.temp_max], h: [0, a.humedad_max], p: [a.presion_min, a.presion_max] }
-      const state = last
+      const last = aLogs[0] || a
+      const params = { t: [a.temp_min ?? 18, a.temp_max ?? 25], h: [0, a.humedad_max ?? 65], p: [a.presion_min ?? 5, a.presion_max ?? 25] }
+      const state = last?.temperatura != null
         ? (last.temperatura < params.t[0] || last.temperatura > params.t[1] || last.humedad > params.h[1] || last.presion < params.p[0] || last.presion > params.p[1] ? 'bad' : 'ok')
         : 'ok'
 
-      // Cálculo corregido y seguro de puntos SVG
-      const hist = last?.historial?.temperatura || [last?.temperatura || 0]
-      const min = Math.min(...hist)
-      const max = Math.max(...hist)
+      const histSeries = aLogs.length > 1
+        ? aLogs.slice(0, 20).map(l => Number(l.temperatura || 0)).reverse()
+        : [Number(last?.temperatura || 20), Number(last?.temperatura || 20)]
+      const min = Math.min(...histSeries)
+      const max = Math.max(...histSeries)
       const range = (max - min) || 1
-      const points = hist.map((v, i) => {
-        const x = 4 + (i * (252 / Math.max(1, hist.length - 1)))
+      const points = histSeries.map((v, i) => {
+        const x = 4 + (i * (252 / Math.max(1, histSeries.length - 1)))
         const y = 52 - (((v - min) / range) * 44)
-        return `${x},${y}`
+        return `${x.toFixed(1)},${y.toFixed(1)}`
       }).join(' ')
 
       return (
         <div className="card" key={a.id}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
             <b>{a.nombre}</b>
-            <span className={`pill ${state}`}>{lab[state] || 'Estable'}</span>
+            <span className={`pill ${state === 'ok' ? '' : state}`}>{lab[state] || 'Estable'}</span>
           </div>
           <svg className="ch" viewBox="0 0 260 60" role="img" aria-label={a.nombre}>
             <polyline

@@ -26,13 +26,15 @@ export const validatePagination = [
 ];
 
 export const validateDateRange = [
-  query('fechaDesde').optional().isISO8601().withMessage('fechaDesde debe ser ISO8601'),
-  query('fechaHasta').optional().isISO8601().withMessage('fechaHasta debe ser ISO8601'),
+  query('fechaDesde').optional({ values: 'falsy' }).isISO8601().withMessage('fechaDesde debe ser ISO8601'),
+  query('fechaHasta').optional({ values: 'falsy' }).isISO8601().withMessage('fechaHasta debe ser ISO8601'),
+  query('fecha_desde').optional({ values: 'falsy' }).isISO8601().withMessage('fecha_desde debe ser ISO8601'),
+  query('fecha_hasta').optional({ values: 'falsy' }).isISO8601().withMessage('fecha_hasta debe ser ISO8601'),
 ];
 
 // Auth
 export const validateLogin = [
-  body('correo').isEmail().normalizeEmail().withMessage('Correo inválido'),
+  body('correo').notEmpty().withMessage('Correo o usuario requerido'),
   body('password').isLength({ min: 1 }).withMessage('Contraseña requerida'),
   handleValidationErrors,
 ];
@@ -41,16 +43,16 @@ export const validateRegister = [
   body('nombre').trim().isLength({ min: 2, max: 150 }).withMessage('Nombre 2-150 caracteres'),
   body('correo').isEmail().normalizeEmail().withMessage('Correo institucional inválido'),
   body('password').isLength({ min: 6 }).withMessage('Contraseña mínimo 6 caracteres'),
-  body('rol').optional().isIn(['admin', 'supervisor', 'operador', 'usuario', 'lectura']).withMessage('Rol inválido'),
+  body('rol').optional({ values: 'falsy' }).isIn(['admin', 'supervisor', 'operador', 'usuario', 'lectura']).withMessage('Rol inválido'),
   handleValidationErrors,
 ];
 
 // Áreas
 export const validateArea = [
   body('nombre').trim().isLength({ min: 2, max: 100 }).withMessage('Nombre 2-100 caracteres'),
-  body('descripcion').optional().isString(),
+  body('descripcion').optional({ values: 'null' }).isString(),
   body('tipo_area').isIn(['liquidos', 'solidos', 'semisolidos', 'esteriles', 'control_calidad', 'almacen', 'otro']).withMessage('Tipo de área inválido'),
-  body('imagen_url').optional().isURL().withMessage('URL de imagen inválida'),
+  body('imagen_url').optional({ values: 'falsy' }).isString().withMessage('URL de imagen inválida'),
   handleValidationErrors,
 ];
 
@@ -58,42 +60,42 @@ export const validateArea = [
 export const validateParametros = [
   body('temp_min').isFloat({ min: -50, max: 100 }).withMessage('Temp mínima -50 a 100'),
   body('temp_max').isFloat({ min: -50, max: 100 }).withMessage('Temp máxima -50 a 100'),
-  body('humedad_min').isFloat({ min: 0, max: 100 }).withMessage('Humedad mínima 0-100%'),
+  body('humedad_min').optional({ values: 'falsy' }).isFloat({ min: 0, max: 100 }).withMessage('Humedad mínima 0-100%'),
   body('humedad_max').isFloat({ min: 0, max: 100 }).withMessage('Humedad máxima 0-100%'),
-  body('presion_min').isFloat({ min: 0 }).withMessage('Presión mínima positiva'),
-  body('presion_max').isFloat({ min: 0 }).withMessage('Presión máxima positiva'),
-  body('temp_critica_min').optional().isFloat({ min: -50, max: 100 }),
-  body('temp_critica_max').optional().isFloat({ min: -50, max: 100 }),
-  body('humedad_critica_min').optional().isFloat({ min: 0, max: 100 }),
-  body('humedad_critica_max').optional().isFloat({ min: 0, max: 100 }),
-  body('presion_critica_min').optional().isFloat({ min: 0 }),
-  body('presion_critica_max').optional().isFloat({ min: 0 }),
+  body('presion_min').isFloat({ min: -100 }).withMessage('Presión mínima inválida'),
+  body('presion_max').isFloat({ min: -100 }).withMessage('Presión máxima inválida'),
+  body('temp_critica_min').optional({ values: 'falsy' }).isFloat({ min: -50, max: 100 }),
+  body('temp_critica_max').optional({ values: 'falsy' }).isFloat({ min: -50, max: 100 }),
+  body('humedad_critica_min').optional({ values: 'falsy' }).isFloat({ min: 0, max: 100 }),
+  body('humedad_critica_max').optional({ values: 'falsy' }).isFloat({ min: 0, max: 100 }),
+  body('presion_critica_min').optional({ values: 'falsy' }).isFloat({ min: -100 }),
+  body('presion_critica_max').optional({ values: 'falsy' }).isFloat({ min: -100 }),
   handleValidationErrors,
 ];
 
 // Lecturas sensores (desde Arduino)
 export const validateLectura = [
-  body('sensor_id').isString().isLength({ min: 1, max: 100 }).withMessage('sensor_id requerido'),
+  body('sensor_id').optional({ values: 'falsy' }).isString().isLength({ min: 1, max: 100 }),
   body('temperatura').isFloat({ min: -50, max: 150 }).withMessage('Temperatura -50 a 150°C'),
   body('humedad').isFloat({ min: 0, max: 100 }).withMessage('Humedad 0-100%'),
-  body('presion').isFloat({ min: 0, max: 1000 }).withMessage('Presión 0-1000 Pa'),
-  body('bateria_nivel').optional().isInt({ min: 0, max: 100 }),
-  body('senal_calidad').optional().isInt({ min: 0, max: 100 }),
-  body('firmware_version').optional().isString(),
+  body('presion').optional({ values: 'falsy' }).isFloat({ min: -100, max: 2000 }).withMessage('Presión inválida'),
+  body('bateria_nivel').optional({ values: 'falsy' }).isInt({ min: 0, max: 100 }),
+  body('senal_calidad').optional({ values: 'falsy' }).isInt({ min: 0, max: 100 }),
+  body('firmware_version').optional({ values: 'falsy' }).isString(),
   handleValidationErrors,
 ];
 
 // Alertas
 export const validateAlertaResolve = [
-  body('notas_resolucion').optional().isString().isLength({ max: 1000 }),
+  body('notas_resolucion').optional({ values: 'falsy' }).isString().isLength({ max: 1000 }),
   handleValidationErrors,
 ];
 
 // Reportes
 export const validateReporte = [
-  query('area_id').optional().isUUID(),
-  query('fecha_desde').isISO8601().withMessage('fecha_desde requerida (ISO8601)'),
-  query('fecha_hasta').isISO8601().withMessage('fecha_hasta requerida (ISO8601)'),
-  query('formato').optional().isIn(['json', 'pdf', 'csv']).withMessage('Formato: json, pdf o csv'),
+  query('area_id').optional({ values: 'falsy' }).isUUID(),
+  query('fecha_desde').optional({ values: 'falsy' }).isISO8601().withMessage('fecha_desde debe ser ISO8601'),
+  query('fecha_hasta').optional({ values: 'falsy' }).isISO8601().withMessage('fecha_hasta debe ser ISO8601'),
+  query('formato').optional({ values: 'falsy' }).isIn(['json', 'pdf', 'csv']).withMessage('Formato: json, pdf o csv'),
   handleValidationErrors,
 ];

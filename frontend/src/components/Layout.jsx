@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { ws } from '../services/api'
+import { api, ws } from '../services/api'
 import OfflineBanner from './OfflineBanner'
 import { LayoutDashboard, Settings, Users, AlertTriangle, Boxes, ListChecks, LogOut, ChevronLeft, ChevronRight, Factory, Sun, Moon, LineChart, ClipboardList, Tv } from 'lucide-react'
 import LockScreen from './LockScreen'
@@ -42,7 +42,17 @@ export default function Layout() {
   const toggleTheme = () => setTheme(prev => prev === 'dark' ? 'light' : 'dark')
 
   useEffect(() => {
-    const unsub = ws.on('alerta:nueva', () => setAlertCount(c => c + 1))
+    api.get('/alertas/pendientes')
+      .then(res => setAlertCount(res.data?.count ?? (res.data?.alertas?.length || 0)))
+      .catch(() => {})
+
+    const unsub = ws.on('alerta:nueva', (alerta) => {
+      if (alerta?.resuelta) {
+        setAlertCount(c => Math.max(0, c - 1))
+      } else {
+        setAlertCount(c => c + 1)
+      }
+    })
     const unsub2 = ws.on('connect', () => ws.send('request:estado'))
     return () => { unsub(); unsub2() }
   }, [])

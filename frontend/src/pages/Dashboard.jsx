@@ -12,7 +12,7 @@ import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 
-const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular' }
+const lab = { ok: 'Estable', warn: 'Regular', bad: 'Irregular', offline: '🔌 Sin conexión' }
 
 function Sparkline({ series, w, h }) {
   if (!series || !series.length) return null;
@@ -47,12 +47,26 @@ export default function Dashboard() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [areasRes, alertsRes] = await Promise.all([
+      const [areasRes, alertsRes, lecturasRes] = await Promise.all([
         api.get('/areas/estado'),
-        api.get('/alertas/pendientes')
+        api.get('/alertas/pendientes'),
+        api.get('/sensores/lecturas?limit=150')
       ])
       setAreas(areasRes.data.areas || [])
       setAlerts(alertsRes.data.alertas || [])
+
+      const rawLogs = Array.isArray(lecturasRes.data?.lecturas) ? [...lecturasRes.data.lecturas].reverse() : []
+      const initialHist = {}
+      rawLogs.forEach(l => {
+        if (!l.area_id) return
+        if (!initialHist[l.area_id]) initialHist[l.area_id] = []
+        initialHist[l.area_id].push({
+          t: Number(l.temperatura || 0),
+          h: Number(l.humedad || 0),
+          p: Number(l.presion || 0)
+        })
+      })
+      setHistory(initialHist)
     } catch (err) {
       console.error('Error fetching dashboard:', err)
       toast.error('Error cargando dashboard')
@@ -67,7 +81,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     const unsub = ws.on('lectura:nueva', (lectura) => {
-      setAreas(prev => prev.map(a => a.area_id === lectura.area_id ? { ...a, ...lectura } : a))
+      setAreas(prev => prev.map(a => (a.area_id === lectura.area_id || a.id === lectura.area_id) ? { ...a, ...lectura } : a))
       setHistory(prev => {
         const newHist = { ...prev }
         if (!newHist[lectura.area_id]) newHist[lectura.area_id] = []
@@ -76,11 +90,15 @@ export default function Dashboard() {
       })
     })
     const unsub2 = ws.on('alerta:nueva', (alerta) => {
-      setAlerts(prev => [alerta, ...prev.slice(0, 9)])
-      toast.error(`Alerta en ${alerta.area_nombre}: ${alerta.mensaje}`)
+      if (alerta?.resuelta) {
+        setAlerts(prev => prev.filter(x => x.id !== alerta.id))
+      } else {
+        setAlerts(prev => [alerta, ...prev.filter(x => x.id !== alerta.id).slice(0, 9)])
+        toast.error(`Alerta en ${alerta.area_nombre || 'Laboratorio'}: ${alerta.mensaje}`)
+      }
     })
     const unsub3 = ws.on('estado:actual', (estadoAreas) => {
-      setAreas(estadoAreas)
+      if (Array.isArray(estadoAreas) && estadoAreas.length > 0) setAreas(estadoAreas)
     })
     return () => { unsub(); unsub2(); unsub3() }
   }, [])
@@ -105,6 +123,7 @@ export default function Dashboard() {
           toast(`Simulando emergencia en ${targetArea.nombre}`, { icon: '🚨' })
           const res = await api.post('/alertas/simular', { area_id: areaId })
           toast.success(res.data?.message || 'Correo de alerta enviado a los responsables de esta área')
+          fetchData()
         } else {
           toast.error('No hay áreas activas disponibles')
         }
@@ -119,16 +138,17 @@ export default function Dashboard() {
   const hr = new Date().getHours()
   const gr = hr < 12 ? 'Buenos días' : hr < 19 ? 'Buenas tardes' : 'Buenas noches'
   const userName = user?.nombre?.split(' ')[0] || 'Usuario'
+  const isOperador = user?.rol?.toLowerCase() === 'operador'
 
   const tasks = [
-    ['Calibrar sensor de presión · Pesada', 'Vence 15 oct', '#c8102e'],
-    ['Revisar parámetros del área Líquidos', 'Vence 18 oct', '#c8102e'],
-    ['Validar informe mensual BPM', 'Vence 24 oct', '#d98e04'],
-    ['Revisar ESP32 de Empaque', 'Vence 30 oct', '#d98e04']
+    ['Calibrar sensor de presión · Pesada', 'Vence 15 nov', '#c8102e'],
+    ['Revisar parámetros del área Líquidos', 'Vence 18 nov', '#c8102e'],
+    ['Validar informe mensual BPM', 'Vence 24 nov', '#d98e04'],
+    ['Verificar conexión ESP32 de Sólidos', 'Vence 30 nov', '#d98e04']
   ]
 
   const colors = ['#7a1530','#c8102e','#8a8486','#d98e04','#1f9d55']
-  const getSeries = (key) => areas.map((a, i) => ({ v: (history[a.area_id] || []).map(r => r[key]), c: colors[i % colors.length] })).filter(s => s.v.length > 0)
+  const getSeries = (key) => areas.map((a, i) => ({ v: (history[a.area_id || a.id] || []).map(r => r[key]), c: colors[i % colors.length] })).filter(s => s.v.length > 0)
 
   return (
     <div>
@@ -139,7 +159,7 @@ export default function Dashboard() {
             Planta de producción · {user?.rol?.toLowerCase() === 'admin' ? '👑 Control Global (Todas las áreas)' : `📍 Área Asignada: ${user?.area_nombre || 'Sector'}`} · {new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
         </div>
-        {user?.rol?.toLowerCase() !== 'operador' && (
+        {!isOperador && (
           <button className="btn red noprint" onClick={handleEmergency}>
             {emergency ? 'Terminar simulación' : 'Simular emergencia'}
           </button>
@@ -149,7 +169,7 @@ export default function Dashboard() {
       {tip && (
         <div className="tipb noprint">
           <span>ⓘ</span>
-          <span><b>Tip:</b> pulsa “Simular emergencia” para ver cómo se activa el LED rojo, la alerta y el correo al gerente.</span>
+          <span><b>Tip:</b> pulsa “Simular emergencia” para ver cómo se activa la alerta en vivo y el envío de correo a los responsables del área.</span>
           <button onClick={() => setTip(false)} aria-label="Cerrar">✕</button>
         </div>
       )}
@@ -169,25 +189,35 @@ export default function Dashboard() {
         </div>
         <div className="card kpi">
           <div className="bd" style={{ background: '#c8102e' }}><span>▲</span><b>{alerts.length}</b></div>
-          <div className="tx"><b>Alertas registradas</b><span className="mut">Correo al gerente</span></div>
+          <div className="tx"><b>Alertas pendientes</b><span className="mut">Notificadas por correo</span></div>
         </div>
       </div>
 
       <div className="cols">
         <div className="card">
           <b>▦ Estado por área</b>
-          {areas.filter(a => a.estado !== 'sin_datos').map(a => (
-            <div key={a.area_id} className="it" onClick={() => navigate(`/areas/${a.area_id}`)}>
-              <div>
-                <b>{a.nombre}<span className="tag">{Number(a.temperatura || 0).toFixed(1)} °C</span></b>
-                <span className="mut">Humedad {Number(a.humedad || 0).toFixed(0)} % · Presión {Number(a.presion || 0).toFixed(1)} Pa</span>
+          {areas.map(a => {
+            const aid = a.area_id || a.id
+            const isEmerg = emergency === aid
+            const currentEstado = isEmerg ? 'bad' : (a.nodo_desconectado ? 'offline' : (a.estado || 'ok'))
+            return (
+              <div key={aid} className="it" onClick={() => navigate(`/areas/${aid}`)}>
+                <div>
+                  <b>{a.nombre}<span className="tag">{a.temperatura != null ? Number(a.temperatura).toFixed(1) : '--'} °C</span></b>
+                  <span className="mut">
+                    Humedad {a.humedad != null ? Number(a.humedad).toFixed(0) : '--'} % · Presión {a.presion != null ? Number(a.presion).toFixed(1) : '--'} Pa
+                    {a.sensor_id ? ` · ${a.sensor_id}` : ''}
+                  </span>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className={`pill ${currentEstado === 'ok' ? '' : currentEstado === 'offline' ? 'warn' : currentEstado}`}>
+                    {lab[currentEstado] || 'Estable'}
+                  </span>
+                  <div className="mut">Límites: {a.temp_min ?? 18}–{a.temp_max ?? 25} °C</div>
+                </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <span className={`pill ${a.estado === 'ok' ? '' : a.estado}`}>{lab[a.estado] || 'Estable'}</span>
-                <div className="mut">Limites: {a.temp_min || '--'}–{a.temp_max || '--'}</div>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="stack">
@@ -195,10 +225,12 @@ export default function Dashboard() {
             <b>＋ Acciones rápidas</b>
             <div className="qg noprint">
               <button className="qa" onClick={() => navigate('/tv')}><i>📺</i>Modo Sala / TV</button>
-              <button className="qa" onClick={handleEmergency}><i>▲</i>Simular emergencia</button>
+              {!isOperador && <button className="qa" onClick={handleEmergency}><i>▲</i>Simular emergencia</button>}
               <button className="qa" onClick={() => navigate('/values')}><i>☰</i>Ver registros</button>
               <button className="qa" onClick={() => window.print()}><i>⎙</i>Descargar PDF</button>
-              <button className="qa" onClick={() => navigate('/areas')}><i>▦</i>Nueva área</button>
+              {user?.rol?.toLowerCase() === 'admin' && (
+                <button className="qa" onClick={() => navigate('/areas')}><i>▦</i>Gestionar áreas</button>
+              )}
             </div>
           </div>
           <div className="card">

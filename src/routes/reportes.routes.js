@@ -61,7 +61,8 @@ router.get('/resumen', authMiddleware, async (req, res) => {
 // GET /api/reportes/area/:id - Reporte detallado de un área
 router.get('/area/:id', authMiddleware, validateId, [...validateDateRange, handleValidationErrors], async (req, res) => {
   try {
-    const { fecha_desde, fecha_hasta } = req.query;
+    const fecha_desde = req.query.fecha_desde || req.query.fechaDesde || new Date(Date.now() - 30 * 86400000).toISOString();
+    const fecha_hasta = req.query.fecha_hasta || req.query.fechaHasta || new Date().toISOString();
 
     const [areaResult, lecturasResult, alertasResult, statsResult] = await Promise.all([
       query('SELECT * FROM areas_laboratorio WHERE id = $1', [req.params.id]),
@@ -115,7 +116,11 @@ router.get('/area/:id', authMiddleware, validateId, [...validateDateRange, handl
 // GET /api/reportes/pdf - Generar PDF
 router.get('/pdf', authMiddleware, validateReporte, handleValidationErrors, async (req, res) => {
   try {
-    const { area_id, fecha_desde, fecha_hasta } = req.query;
+    const area_id = (req.user.rol?.toLowerCase() !== 'admin' && req.user.area_id)
+      ? req.user.area_id
+      : (req.query.area_id || req.query.areaId);
+    const fecha_desde = req.query.fecha_desde || req.query.fechaDesde || new Date(Date.now() - 30 * 86400000).toISOString();
+    const fecha_hasta = req.query.fecha_hasta || req.query.fechaHasta || new Date().toISOString();
 
     let areasQuery = `
       SELECT a.*, ps.temp_min, ps.temp_max, ps.humedad_min, ps.humedad_max, ps.presion_min, ps.presion_max
@@ -146,9 +151,9 @@ router.get('/pdf', authMiddleware, validateReporte, handleValidationErrors, asyn
             AVG(presion)::numeric(10,2) as pres_promedio,
             MIN(presion)::numeric(10,2) as pres_min,
             MAX(presion)::numeric(10,2) as pres_max,
-            (SELECT temperatura FROM lecturas_sensores WHERE area_id = a.id ORDER BY fecha_hora DESC LIMIT 1) as ultima_temperatura,
-            (SELECT humedad FROM lecturas_sensores WHERE area_id = a.id ORDER BY fecha_hora DESC LIMIT 1) as ultima_humedad,
-            (SELECT presion FROM lecturas_sensores WHERE area_id = a.id ORDER BY fecha_hora DESC LIMIT 1) as ultima_presion
+            (SELECT temperatura FROM lecturas_sensores WHERE area_id = $1 ORDER BY fecha_hora DESC LIMIT 1) as ultima_temperatura,
+            (SELECT humedad FROM lecturas_sensores WHERE area_id = $1 ORDER BY fecha_hora DESC LIMIT 1) as ultima_humedad,
+            (SELECT presion FROM lecturas_sensores WHERE area_id = $1 ORDER BY fecha_hora DESC LIMIT 1) as ultima_presion
           FROM lecturas_sensores
           WHERE area_id = $1 AND fecha_hora BETWEEN $2 AND $3
         `, [area.id, fecha_desde, fecha_hasta]),
@@ -163,19 +168,24 @@ router.get('/pdf', authMiddleware, validateReporte, handleValidationErrors, asyn
       const alertas = alertasResult.rows;
 
       let estado = 'sin_datos';
-      if (lecturas.ultima_temperatura !== null) {
+      if (lecturas.ultima_temperatura !== null && lecturas.ultima_temperatura !== undefined) {
         const temp = parseFloat(lecturas.ultima_temperatura);
         const hum = parseFloat(lecturas.ultima_humedad || 0);
         const pres = parseFloat(lecturas.ultima_presion || 0);
         const p = area;
 
-        const tempCritica = p.temp_critica_min && (temp < p.temp_critica_min || temp > (p.temp_critica_max || p.temp_max));
-        const humCritica = p.humedad_critica_min && (hum < p.humedad_critica_min || hum > (p.humedad_critica_max || p.humedad_max));
-        const presCritica = p.presion_critica_min && (pres < p.presion_critica_min || pres > (p.presion_critica_max || p.presion_max));
+        const tMin = parseFloat(p.temp_min ?? 18);
+        const tMax = parseFloat(p.temp_max ?? 25);
+        const hMin = parseFloat(p.humedad_min ?? 35);
+        const hMax = parseFloat(p.humedad_max ?? 65);
+        const pMin = parseFloat(p.presion_min ?? 5);
+        const pMax = parseFloat(p.presion_max ?? 25);
 
-        if (tempCritica || humCritica || presCritica) estado = 'critica';
-        else if (temp < p.temp_min || temp > p.temp_max || hum < p.humedad_min || hum > p.humedad_max || pres < p.presion_min || pres > p.presion_max) estado = 'irregular';
-        else estado = 'estable';
+        if (temp < tMin || temp > tMax || hum < hMin || hum > hMax || pres < pMin || pres > pMax) {
+          estado = 'irregular';
+        } else {
+          estado = 'estable';
+        }
       }
 
       areas.push({
@@ -184,16 +194,16 @@ router.get('/pdf', authMiddleware, validateReporte, handleValidationErrors, asyn
         alertasRecientes: alertas,
         alertasCount: alertas.length,
         estadoGeneral: estado,
-        tempEstado: lecturas.ultima_temperatura !== null && (parseFloat(lecturas.ultima_temperatura) < area.temp_min || parseFloat(lecturas.ultima_temperatura) > area.temp_max) ? 'irregular' : 'estable',
-        humEstado: lecturas.ultima_humedad !== null && (parseFloat(lecturas.ultima_humedad) < area.humedad_min || parseFloat(lecturas.ultima_humedad) > area.humedad_max) ? 'irregular' : 'estable',
-        presEstado: lecturas.ultima_presion !== null && (parseFloat(lecturas.ultima_presion) < area.presion_min || parseFloat(lecturas.ultima_presion) > area.presion_max) ? 'irregular' : 'estable',
+        tempEstado: lecturas.ultima_temperatura !== null && (parseFloat(lecturas.ultima_temperatura) < (area.temp_min ?? 18) || parseFloat(lecturas.ultima_temperatura) > (area.temp_max ?? 25)) ? 'irregular' : 'estable',
+        humEstado: lecturas.ultima_humedad !== null && (parseFloat(lecturas.ultima_humedad) < (area.humedad_min ?? 35) || parseFloat(lecturas.ultima_humedad) > (area.humedad_max ?? 65)) ? 'irregular' : 'estable',
+        presEstado: lecturas.ultima_presion !== null && (parseFloat(lecturas.ultima_presion) < (area.presion_min ?? 5) || parseFloat(lecturas.ultima_presion) > (area.presion_max ?? 25)) ? 'irregular' : 'estable',
       });
     }
 
     const pdfBuffer = await generateReportPDF({ areas, fechaDesde: fecha_desde, fechaHasta: fecha_hasta });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="reporte_${fecha_desde}_${fecha_hasta}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="reporte_pharma_monitor.pdf"`);
     res.send(pdfBuffer);
   } catch (error) {
     console.error('Error PDF:', error);

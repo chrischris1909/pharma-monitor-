@@ -18,15 +18,19 @@ export const pool = new Pool({
   max: config.db.max,
   idleTimeoutMillis: config.db.idleTimeoutMillis,
   connectionTimeoutMillis: config.db.connectionTimeoutMillis,
+  keepAlive: config.db.keepAlive ?? true,
+  keepAliveInitialDelayMillis: config.db.keepAliveInitialDelayMillis ?? 10000,
 });
 
 // Eventos del pool
-pool.on('connect', (client) => {
-  console.log('📦 Nueva conexión a PostgreSQL establecida');
+pool.on('connect', () => {
+  if (config.nodeEnv === 'development') {
+    console.log('📦 Nueva conexión a PostgreSQL establecida');
+  }
 });
 
 pool.on('error', (err) => {
-  console.error('❌ Error inesperado en pool PostgreSQL:', err);
+  console.error('❌ Error inesperado en pool PostgreSQL:', err.message);
 });
 
 // Verificar conexión al inicio
@@ -44,19 +48,32 @@ export async function testConnection() {
   }
 }
 
-// Helper para queries con logging en desarrollo
-export async function query(text, params) {
+// Helper para queries con reintento automático ante cortes transitorios del pooler
+export async function query(text, params, retries = 2) {
   const start = Date.now();
-  try {
-    const result = await pool.query(text, params);
-    const duration = Date.now() - start;
-    if (config.nodeEnv === 'development') {
-      console.log('🔍 Query:', { text: text.substring(0, 100), duration: `${duration}ms`, rows: result.rowCount });
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await pool.query(text, params);
+      const duration = Date.now() - start;
+      if (config.nodeEnv === 'development') {
+        console.log('🔍 Query:', { text: text.substring(0, 100), duration: `${duration}ms`, rows: result.rowCount });
+      }
+      return result;
+    } catch (error) {
+      const isTransient =
+        error.message?.includes('Connection terminated') ||
+        error.message?.includes('connection timeout') ||
+        error.code === 'ECONNRESET' ||
+        error.code === 'ETIMEDOUT' ||
+        error.code === '57P01';
+
+      if (isTransient && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+        continue;
+      }
+      console.error('❌ Query error:', { text: text.substring(0, 100), error: error.message });
+      throw error;
     }
-    return result;
-  } catch (error) {
-    console.error('❌ Query error:', { text: text.substring(0, 100), error: error.message });
-    throw error;
   }
 }
 
